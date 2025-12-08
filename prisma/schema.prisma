@@ -1,0 +1,201 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserPlan {
+  FREE
+  PREMIUM
+}
+
+enum EventStatus {
+  PLANNED
+  COMPLETED
+  CANCELLED
+}
+
+enum RoleInEvent {
+  ORGANISER
+  ENCADRANT
+  PARTICIPANT
+}
+
+enum EventParticipantStatus {
+  INVITED
+  GOING
+  MAYBE
+  DECLINED
+}
+
+enum RouteType {
+  ROUTE
+  TRAIL
+  MIXED
+}
+
+model User {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  email     String? @unique
+  // Pour les Guests sans email on laissera null, ou on forcera plus tard.
+  firstName String
+  lastName  String?
+  isGuest   Boolean @default(false)
+
+  // Free / Premium
+  plan      UserPlan  @default(FREE)
+  planSince DateTime?
+  planUntil DateTime?
+
+  acceptedTermsAt DateTime?
+
+  // Relations
+  organisedEvents Event[]            @relation("OrganiserEvents")
+  participations  EventParticipant[]
+  routes          Route[]            @relation("RouteCreatedBy")
+
+  @@index([plan])
+}
+
+// Événement global : "Run du jeudi soir – Run & Drink"
+model Event {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  title         String
+  description   String?
+  startDateTime DateTime
+  status        EventStatus @default(PLANNED)
+
+  // Organisateur principal
+  organiserId String
+  organiser   User   @relation("OrganiserEvents", fields: [organiserId], references: [id])
+
+  // Lieu (MVP : simple, pourra évoluer plus tard)
+  locationName    String?
+  locationAddress String?
+  locationLat     Float?
+  locationLng     Float?
+
+  // Accès event (QR/code)
+  eventCode String @unique
+
+  // Relations
+  routes       EventRoute[]
+  participants EventParticipant[]
+
+  @@index([organiserId, startDateTime])
+  @@index([status, startDateTime])
+}
+
+// Parcours "bibliothèque" réutilisable (mutualisé)
+model Route {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  name           String
+  distanceMeters Int
+  ascentMeters   Int?
+  type           RouteType @default(ROUTE)
+
+  // Géolocalisation approximative pour recherche
+  centerLat Float?
+  centerLng Float?
+
+  // Tracé : on peut stocker un encoded polyline ou du GeoJSON en string
+  encodedPolyline String?
+
+  // Tags simples (route, trail, plat, vallonné...)
+  tags String[]
+
+  // Créateur du parcours (optionnel si généré système)
+  createdById String?
+  createdBy   User?   @relation("RouteCreatedBy", fields: [createdById], references: [id])
+
+  // Utilisation dans des événements
+  eventRoutes EventRoute[]
+}
+
+// Parcours dans le contexte d'un Event (5 km / 7 km / 10 km…)
+model EventRoute {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  eventId String
+  event   Event  @relation(fields: [eventId], references: [id])
+
+  // Lien vers la bibliothèque (optionnel si pur custom)
+  routeId String?
+  route   Route?  @relation(fields: [routeId], references: [id])
+
+  // Infos propres à l'event (label, distance éventuellement ajustée)
+  name           String
+  distanceMeters Int
+  ascentMeters   Int?
+  type           RouteType?
+
+  // Tracé utilisé pour CET event (copié du Route ou dessiné)
+  encodedPolyline String?
+
+  groups       EventGroup[]
+  participants EventParticipant[] @relation("RouteParticipants")
+}
+
+// Groupe d'allure sur un EventRoute (10–11 km/h, 12+ km/h…)
+model EventGroup {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  eventRouteId String
+  eventRoute   EventRoute @relation(fields: [eventRouteId], references: [id])
+
+  label      String
+  paceMinKmh Float?
+  paceMaxKmh Float?
+
+  // Participants rattachés à ce groupe
+  participants EventParticipant[] @relation("GroupParticipants")
+}
+
+// Participation / rôle d'un user sur un event
+model EventParticipant {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  eventId String
+  event   Event  @relation(fields: [eventId], references: [id])
+
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id])
+
+  role   RoleInEvent            @default(PARTICIPANT)
+  status EventParticipantStatus @default(GOING)
+
+  // Choix du parcours
+  eventRouteId String?
+  eventRoute   EventRoute? @relation("RouteParticipants", fields: [eventRouteId], references: [id])
+
+  // Choix du groupe d'allure
+  eventGroupId String?
+  eventGroup   EventGroup? @relation("GroupParticipants", fields: [eventGroupId], references: [id])
+
+  @@index([eventId, userId], name: "idx_event_user")
+  @@index([eventId, status])
+}
