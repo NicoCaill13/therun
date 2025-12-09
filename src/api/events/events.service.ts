@@ -1,18 +1,22 @@
 // src/events/events.service.ts
-import {
-  Injectable,
-  NotFoundException,
-  ForbiddenException,
-} from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '@/infrastructure/db/prisma.service';
 import { EventStatus, UserPlan } from '@prisma/client';
 import { CreateEventDto } from './dto/create-event.dto';
-import { UpdateEventDto } from './dto/update-event.dto';
-import { UpdateEventStatusDto } from './dto/update-event-status.dto';
+import { UserService } from '../users/user.service';
+import { EventParticipantService } from '../event-participants/event-participant.service';
+import { EventBlockResponseDto, EventDetailsResponseDto } from './dto/event-details-response.dto';
+import { CurrentUserParticipationResponseDto, EventParticipantDto } from '../event-participants/dto/event-participant.dto';
+import { SimpleUserResponseDto } from '../users/dto/simple-user.dto';
+import { plainToInstance } from 'class-transformer';
 
 @Injectable()
 export class EventsService {
-  constructor(private readonly prisma: PrismaService) { }
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly userService: UserService,
+    private readonly eventParticipantService: EventParticipantService,
+  ) { }
 
   // petit générateur de code évenement lisible
   private generateEventCode(): string {
@@ -78,10 +82,13 @@ export class EventsService {
     });
 
     if (activeCount >= 1) {
-      throw new ForbiddenException(
-        'Limite The Run Free atteinte : 1 événement actif par semaine. Passe en Premium pour en créer plus.',
-      );
+      throw new ForbiddenException('Limite The Run Free atteinte : 1 événement actif par semaine. Passe en Premium pour en créer plus.');
     }
+  }
+
+  private buildDisplayName(user: { firstName: string; lastName: string | null }): string {
+    if (!user.lastName) return user.firstName;
+    return `${user.firstName} ${user.lastName}`;
   }
 
   async createForOrganiser(organiserId: string, dto: CreateEventDto) {
@@ -89,61 +96,37 @@ export class EventsService {
 
     const eventCode = await this.generateUniqueEventCode();
 
-    const event = await this.prisma.event.create({
-      data: {
-        title: dto.title,
-        description: dto.description,
-        startDateTime: new Date(dto.startDateTime),
-        status: EventStatus.PLANNED,
-        organiserId,
-        locationName: dto.locationName,
-        locationAddress: dto.locationAddress,
-        locationLat: dto.locationLat,
-        locationLng: dto.locationLng,
-        eventCode,
-      },
-    });
+    const data = {
+      description: dto.description,
+      startDateTime: new Date(dto.startDateTime),
+      status: EventStatus.PLANNED,
+      organiserId,
+      locationName: dto.locationName,
+      locationAddress: dto.locationAddress,
+      locationLat: dto.locationLat,
+      locationLng: dto.locationLng,
+      eventCode,
+      title: dto.title,
+    };
+    const event = await this.prisma.event.create({ data });
+
+    await this.eventParticipantService.createOrganiserParticipant(event.id, organiserId);
 
     return event;
   }
 
-  findMyEvents(organiserId: string, scope: 'future' | 'past') {
-    const now = new Date();
-
-    if (scope === 'future') {
-      return this.prisma.event.findMany({
-        where: {
-          organiserId,
-          status: EventStatus.PLANNED,
-          startDateTime: {
-            gte: now,
-          },
-        },
-        orderBy: { startDateTime: 'asc' },
-      });
+  async getEventDetails(eventId: string, organiserId: string): Promise<EventDetailsResponseDto> {
+    if (!organiserId) {
+      throw new ForbiddenException('Unauthenticated user');
     }
 
-    // past: COMPLETED + éventuellement CANCELLED, date passée
-    return this.prisma.event.findMany({
-      where: {
-        organiserId,
-        startDateTime: {
-          lt: now,
-        },
-        status: {
-          in: [EventStatus.COMPLETED, EventStatus.CANCELLED],
-        },
-      },
-      orderBy: { startDateTime: 'desc' },
-    });
-  }
-
-  async findOne(id: string) {
     const event = await this.prisma.event.findUnique({
-      where: { id },
+      where: { id: eventId },
       include: {
-        routes: true, // utile plus tard, pour l’instant ok
-        participants: true,
+        organiser: true,
+        participants: {
+          include: { user: true },
+        },
       },
     });
 
@@ -151,67 +134,61 @@ export class EventsService {
       throw new NotFoundException('Event not found');
     }
 
-    return event;
-  }
+    const eventBlock: EventBlockResponseDto = {
+      id: event.id,
+      title: event.title,
+      description: event.description,
+      startDateTime: event.startDateTime,
+      locationName: event.locationName,
+      locationAddress: event.locationAddress,
+      locationLat: event.locationLat,
+      locationLng: event.locationLng,
+      status: event.status,
+      eventCode: event.eventCode,
+    };
 
-  async update(organiserId: string, id: string, dto: UpdateEventDto) {
-    const existing = await this.prisma.event.findUnique({
-      where: { id },
-      select: { organiserId: true, status: true },
+    const organiserDisplayName = this.buildDisplayName(event.organiser);
+    const organiserDto: SimpleUserResponseDto = {
+      id: event.organiser.id,
+      displayName: organiserDisplayName,
+      avatarUrl: null,
+    };
+
+    const participantsDto: EventParticipantDto[] = event.participants.map((ep) => {
+      const displayName = ep.user ? this.buildDisplayName(ep.user) : 'Invité';
+
+      return {
+        userId: ep.userId,
+        displayName,
+        // ⚠️ Prisma: ep.role  → DTO: roleInEvent
+        roleInEvent: ep.role, // <- ICI, plus ep.roleInEvent
+        status: ep.status,
+        eventRouteId: ep.eventRouteId,
+        eventGroupId: ep.eventGroupId,
+      };
     });
 
-    if (!existing) throw new NotFoundException('Event not found');
-    if (existing.organiserId !== organiserId) {
-      throw new ForbiddenException('Not event organiser');
-    }
-    if (existing.status !== EventStatus.PLANNED) {
-      throw new ForbiddenException('Only PLANNED events can be edited');
-    }
+    const currentEp = event.participants.find((ep) => ep.userId === organiserId) || null;
 
-    return this.prisma.event.update({
-      where: { id },
-      data: {
-        title: dto.title ?? undefined,
-        description: dto.description ?? undefined,
-        startDateTime: dto.startDateTime
-          ? new Date(dto.startDateTime)
-          : undefined,
-        locationName: dto.locationName ?? undefined,
-        locationAddress: dto.locationAddress ?? undefined,
-        locationLat: dto.locationLat ?? undefined,
-        locationLng: dto.locationLng ?? undefined,
-      },
-    });
-  }
+    const currentUserParticipation: CurrentUserParticipationResponseDto | null = currentEp
+      ? {
+        userId: currentEp.userId,
+        roleInEvent: currentEp.role,
+        status: currentEp.status,
+        eventRouteId: currentEp.eventRouteId,
+        eventGroupId: currentEp.eventGroupId,
+      }
+      : null;
 
-  async updateStatus(
-    organiserId: string,
-    id: string,
-    dto: UpdateEventStatusDto,
-  ) {
-    const existing = await this.prisma.event.findUnique({
-      where: { id },
-      select: { organiserId: true, status: true },
-    });
+    const plain = {
+      event: eventBlock,
+      organiser: organiserDto,
+      participants: participantsDto,
+      currentUserParticipation,
+    };
 
-    if (!existing) throw new NotFoundException('Event not found');
-    if (existing.organiserId !== organiserId) {
-      throw new ForbiddenException('Not event organiser');
-    }
-
-    // Règles simples MVP : on ne repasse pas de COMPLETED/CANCELLED à PLANNED
-    if (
-      existing.status !== EventStatus.PLANNED &&
-      dto.status === EventStatus.PLANNED
-    ) {
-      throw new ForbiddenException('Cannot revert an event to PLANNED');
-    }
-
-    return this.prisma.event.update({
-      where: { id },
-      data: {
-        status: dto.status,
-      },
+    return plainToInstance(EventDetailsResponseDto, plain, {
+      excludeExtraneousValues: true,
     });
   }
 }
