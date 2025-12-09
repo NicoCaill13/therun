@@ -101,14 +101,13 @@ export class EventsService {
         locationLat: dto.locationLat,
         locationLng: dto.locationLng,
         eventCode,
-        // IMPORTANT MVP-4 : ajouter aussi une ligne EventParticipant ORGANISER ici plus tard
       },
     });
 
     return event;
   }
 
-  async findMyEvents(organiserId: string, scope: 'future' | 'past') {
+  findMyEvents(organiserId: string, scope: 'future' | 'past') {
     const now = new Date();
 
     if (scope === 'future') {
