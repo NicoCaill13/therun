@@ -19,13 +19,9 @@ import { EventsService } from './events.service';
 import { CreateEventDto } from './dto/create-event.dto';
 import { UpdateEventDto } from './dto/update-event.dto';
 import { UpdateEventStatusDto } from './dto/update-event-status.dto';
-
-// À adapter à ta stack d’auth
-// import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-// import { CurrentUser } from '../auth/current-user.decorator';
-
-// Pour l’exemple, je type un User minimal :
-type AuthUser = { id: string };
+import { JwtAuthGuard } from '@/infrastructure/auth/jwt-auth.guard';
+import { CurrentUser } from '@/infrastructure/auth/user.decorator';
+import { JwtUser } from '@/types/jwt';
 
 @ApiTags('Events')
 @ApiBearerAuth()
@@ -34,14 +30,12 @@ type AuthUser = { id: string };
 export class EventsController {
   constructor(private readonly eventsService: EventsService) { }
 
+  @UseGuards(JwtAuthGuard)
   @Post()
   @ApiOperation({ summary: 'Créer un événement (MVP-1)' })
-  async create(
-    @Body() dto: CreateEventDto,
-    // @CurrentUser() user: AuthUser,
-  ) {
+  async create(@CurrentUser() user: JwtUser, @Body() dto: CreateEventDto) {
     const organiserId = 'TODO_USER_ID'; // à remplacer par user.id
-    return this.eventsService.createForOrganiser(organiserId, dto);
+    return this.eventsService.createForOrganiser(user.userId, dto);
   }
 
   @Get('mine')
