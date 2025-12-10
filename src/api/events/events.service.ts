@@ -1,7 +1,7 @@
 // src/events/events.service.ts
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '@/infrastructure/db/prisma.service';
-import { EventStatus, UserPlan } from '@prisma/client';
+import { EventParticipantStatus, EventStatus, RoleInEvent, User, UserPlan } from '@prisma/client';
 import { CreateEventDto } from './dto/create-event.dto';
 import { UserService } from '../users/user.service';
 import { EventParticipantService } from '../event-participants/event-participant.service';
@@ -9,6 +9,7 @@ import { EventBlockResponseDto, EventDetailsResponseDto } from './dto/event-deta
 import { CurrentUserParticipationResponseDto, EventParticipantDto } from '../event-participants/dto/event-participant.dto';
 import { SimpleUserResponseDto } from '../users/dto/simple-user.dto';
 import { plainToInstance } from 'class-transformer';
+import { UpdateParticipantRoleDto } from '../event-participants/dto/update-participant-role.dto';
 
 @Injectable()
 export class EventsService {
@@ -86,9 +87,39 @@ export class EventsService {
     }
   }
 
-  private buildDisplayName(user: { firstName: string; lastName: string | null }): string {
-    if (!user.lastName) return user.firstName;
-    return `${user.firstName} ${user.lastName}`;
+  private getUserDisplayName(user: User | null): string {
+    if (!user) {
+      return 'Invité';
+    }
+    if (user.firstName && user.lastName) {
+      return `${user.firstName} ${user.lastName}`;
+    }
+    return user.firstName || user.lastName || 'Invité';
+  }
+
+  private buildParticipantDtoFromEntity(ep: {
+    userId: string | null;
+    displayName?: string | null;
+    role: RoleInEvent;
+    status: EventParticipantStatus;
+    eventRouteId: string | null;
+    eventGroupId: string | null;
+    user: User | null;
+  }): EventParticipantDto {
+    const displayName = ep.user !== null ? this.getUserDisplayName(ep.user) : (ep.displayName ?? 'Invité');
+
+    const plain = {
+      userId: ep.userId ?? '',
+      displayName,
+      roleInEvent: ep.role,
+      status: ep.status,
+      eventRouteId: ep.eventRouteId,
+      eventGroupId: ep.eventGroupId,
+    };
+
+    return plainToInstance(EventParticipantDto, plain, {
+      excludeExtraneousValues: true,
+    });
   }
 
   async createForOrganiser(organiserId: string, dto: CreateEventDto) {
@@ -147,7 +178,7 @@ export class EventsService {
       eventCode: event.eventCode,
     };
 
-    const organiserDisplayName = this.buildDisplayName(event.organiser);
+    const organiserDisplayName = this.getUserDisplayName(event.organiser);
     const organiserDto: SimpleUserResponseDto = {
       id: event.organiser.id,
       displayName: organiserDisplayName,
@@ -155,7 +186,7 @@ export class EventsService {
     };
 
     const participantsDto: EventParticipantDto[] = event.participants.map((ep) => {
-      const displayName = ep.user ? this.buildDisplayName(ep.user) : 'Invité';
+      const displayName = ep.user ? this.getUserDisplayName(ep.user) : 'Invité';
 
       return {
         userId: ep.userId,
@@ -190,5 +221,65 @@ export class EventsService {
     return plainToInstance(EventDetailsResponseDto, plain, {
       excludeExtraneousValues: true,
     });
+  }
+
+  async updateParticipantRole(
+    eventId: string,
+    targetUserId: string,
+    currentUserId: string,
+    dto: UpdateParticipantRoleDto,
+  ): Promise<EventParticipantDto> {
+    // 1. Vérifier que l’event existe
+    const event = await this.prisma.event.findUnique({
+      where: { id: eventId },
+    });
+
+    if (!event) {
+      throw new NotFoundException('Event not found');
+    }
+
+    // 2. Vérifier que le caller est bien l’organisateur
+    if (event.organiserId !== currentUserId) {
+      throw new ForbiddenException('Only the organiser can update participant roles for this event');
+    }
+
+    // 3. Règle métier de la story : pour l’instant, on ne gère que ENCADRANT
+    if (dto.roleInEvent !== RoleInEvent.ENCADRANT) {
+      throw new BadRequestException('Only promotion to ENCADRANT is supported in this version');
+    }
+
+    // 4. Récupérer le participant pour cet event
+    const participant = await this.prisma.eventParticipant.findFirst({
+      where: {
+        eventId,
+        userId: targetUserId,
+      },
+      include: {
+        user: true,
+      },
+    });
+
+    if (!participant) {
+      throw new NotFoundException('Participant not found for this event');
+    }
+
+    // 5. On ne touche jamais au rôle de l’organisateur
+    if (participant.role === RoleInEvent.ORGANISER) {
+      throw new BadRequestException('Cannot change the role of the organiser');
+    }
+
+    // 6. Update du rôle en ENCADRANT (le status reste inchangé)
+    const updated = await this.prisma.eventParticipant.update({
+      where: { id: participant.id },
+      data: {
+        role: RoleInEvent.ENCADRANT,
+      },
+      include: {
+        user: true,
+      },
+    });
+
+    // 7. Mapping vers un DTO propre
+    return this.buildParticipantDtoFromEntity(updated);
   }
 }
