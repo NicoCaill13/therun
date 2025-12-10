@@ -43,7 +43,7 @@ describe('EventsController – POST /events (e2e)', () => {
     await app.close();
   });
 
-  describe('POST /events general error', () => {
+  describe('POST /events general', () => {
     it('devrait renvoyer 401 si aucun token n’est fourni', async () => {
       await request(app.getHttpServer()).post('/events').send({}).expect(401);
     });
@@ -99,6 +99,35 @@ describe('EventsController – POST /events (e2e)', () => {
         where: { organiserId: organiserPremium.id },
       });
       expect(eventsInDb.length).toBeGreaterThanOrEqual(2);
+    });
+    it('devrait créer automatiquement un EventParticipant ORGANISER pour le créateur', async () => {
+      const response = await request(app.getHttpServer())
+        .post('/events')
+        .set('Authorization', `Bearer ${organiserPremiumToken}`)
+        .send(payload)
+        .expect(201);
+
+      const eventId = response.body.id;
+
+      // Assert: vérifier la présence de l’EventParticipant en DB
+      const ep = await prisma.eventParticipant.findFirst({
+        where: {
+          eventId,
+          userId: organiserPremium.id,
+        },
+      });
+
+      expect(ep).toBeDefined();
+      expect(ep!.role).toBe(RoleInEvent.ORGANISER);
+      expect(ep!.status).toBe(EventParticipantStatus.GOING);
+
+      // Et vérif rapide que organiserId et EventParticipant sont cohérents
+      const event = await prisma.event.findUnique({
+        where: { id: eventId },
+      });
+
+      expect(event).not.toBeNull();
+      expect(event!.organiserId).toBe(organiserPremium.id);
     });
   });
 });
