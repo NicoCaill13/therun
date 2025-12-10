@@ -40,4 +40,11 @@ export class EventsController {
   ): Promise<EventParticipantDto> {
     return this.eventsService.updateParticipantRole(eventId, userId, user.userId, dto);
   }
+
+  @UseGuards(JwtAuthGuard)
+  @Patch(':eventId/complete')
+  async completeEvent(@Param('eventId') eventId: string, @CurrentUser() user: JwtUser) {
+    const currentUserId = user.userId;
+    return this.eventsService.completeEvent(eventId, currentUserId);
+  }
 }

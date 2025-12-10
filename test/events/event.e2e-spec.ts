@@ -371,3 +371,118 @@ describe('EventsController – Pacth /event (e2e)', () => {
     });
   });
 });
+
+describe('EventsController (e2e) – POST /events/:eventId/complete', () => {
+  let app: INestApplication;
+  let prisma: PrismaService;
+
+  let userFree: any;
+  let userFreeToken: string;
+  let userPremium: any;
+  let userPremiumToken: string;
+  let event: any;
+
+  beforeAll(async () => {
+    const ctx = await createE2eApp();
+    app = ctx.app;
+    prisma = ctx.prisma;
+    const jwtService = ctx.jwtService;
+
+    await prisma.eventParticipant.deleteMany();
+    await prisma.event.deleteMany();
+    await prisma.user.deleteMany();
+
+    userFree = await seedUser(prisma, UserPlan.FREE, { firstName: 'Free' });
+    userFreeToken = makeJwtToken(jwtService, userFree.id, userFree.email, UserPlan.FREE);
+
+    userPremium = await seedUser(prisma, UserPlan.PREMIUM, { firstName: 'Premium' });
+    userPremiumToken = makeJwtToken(jwtService, userPremium.id, userPremium.email, UserPlan.PREMIUM);
+
+    event = await prisma.event.create({
+      data: {
+        organiserId: userFree.id,
+        title: 'Event pour promotion',
+        description: null,
+        startDateTime: new Date(),
+        status: EventStatus.PLANNED,
+        locationName: null,
+        locationAddress: null,
+        locationLat: null,
+        locationLng: null,
+        eventCode: 'PROMO01',
+      },
+    });
+    await prisma.eventParticipant.create({
+      data: {
+        eventId: event.id,
+        userId: userFree.id,
+        status: EventParticipantStatus.GOING,
+        role: RoleInEvent.ORGANISER,
+      },
+    });
+
+    await prisma.eventParticipant.create({
+      data: {
+        eventId: event.id,
+        userId: userPremium.id,
+        status: EventParticipantStatus.GOING,
+        role: RoleInEvent.PARTICIPANT,
+        eventRouteId: null,
+        eventGroupId: null,
+      },
+    });
+  });
+
+  afterAll(async () => {
+    await app.close();
+  });
+
+  it('devrait renvoyer 401 si aucun token n’est fourni', async () => {
+    await request(app.getHttpServer()).patch(`/events/${event.id}/complete`).expect(401);
+  });
+
+  it('devrait renvoyer 404 si l’event n’existe pas', async () => {
+    await request(app.getHttpServer())
+      .patch(`/events/event-inexistant-123/complete`)
+      .set('Authorization', `Bearer ${userFreeToken}`)
+      .expect(404);
+  });
+
+  it('devrait renvoyer 403 si le user courant n’est pas l’organisateur', async () => {
+    await request(app.getHttpServer()).patch(`/events/${event.id}/complete`).set('Authorization', `Bearer ${userPremiumToken}`).expect(403);
+  });
+
+  it('devrait passer l’event en COMPLETED et renvoyer le payload détaillé', async () => {
+    const res = await request(app.getHttpServer())
+      .patch(`/events/${event.id}/complete`)
+      .set('Authorization', `Bearer ${userFreeToken}`)
+      .expect(200);
+
+    const body = res.body;
+
+    console.log(body);
+
+    // On s’attend au même shape que GET /events/:id
+    expect(body).toHaveProperty('event');
+    expect(body.event).toHaveProperty('id', event.id);
+    expect(body.event).toHaveProperty('status', 'COMPLETED');
+
+    expect(body).toHaveProperty('organiser');
+    expect(body.organiser).toHaveProperty('id', userFree.id);
+
+    expect(Array.isArray(body.participants)).toBe(true);
+    expect(body.participants.length).toBeGreaterThanOrEqual(2);
+
+    const eventInDb = await prisma.event.findUnique({ where: { id: event.id } });
+    expect(eventInDb?.status).toBe(EventStatus.COMPLETED);
+  });
+
+  it('devrait être idempotent si l’event est déjà COMPLETED', async () => {
+    const res = await request(app.getHttpServer())
+      .patch(`/events/${event.id}/complete`)
+      .set('Authorization', `Bearer ${userFreeToken}`)
+      .expect(200);
+
+    expect(res.body.event.status).toBe('COMPLETED');
+  });
+});
