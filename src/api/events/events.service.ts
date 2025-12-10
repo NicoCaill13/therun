@@ -191,8 +191,7 @@ export class EventsService {
       return {
         userId: ep.userId,
         displayName,
-        // ⚠️ Prisma: ep.role  → DTO: roleInEvent
-        roleInEvent: ep.role, // <- ICI, plus ep.roleInEvent
+        roleInEvent: ep.role,
         status: ep.status,
         eventRouteId: ep.eventRouteId,
         eventGroupId: ep.eventGroupId,
