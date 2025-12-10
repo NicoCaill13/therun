@@ -281,4 +281,38 @@ export class EventsService {
     // 7. Mapping vers un DTO propre
     return this.buildParticipantDtoFromEntity(updated);
   }
+
+  async completeEvent(eventId: string, currentUserId: string) {
+    // 1. Récupérer l’event
+    const event = await this.prisma.event.findUnique({
+      where: { id: eventId },
+    });
+
+    if (!event) {
+      throw new NotFoundException('Event not found');
+    }
+
+    // 2. Vérifier que le user courant est bien l’organisateur
+    if (event.organiserId !== currentUserId) {
+      throw new ForbiddenException('Only organiser can complete this event.');
+    }
+
+    // 3. Si l’event est annulé, on peut choisir de refuser (optionnel pour MVP)
+    if (event.status === EventStatus.CANCELLED) {
+      throw new BadRequestException('Cannot complete a cancelled event.');
+    }
+
+    // 4. Si déjà COMPLETED → idempotent : on ne refait pas un update
+    if (event.status !== EventStatus.COMPLETED) {
+      await this.prisma.event.update({
+        where: { id: eventId },
+        data: {
+          status: EventStatus.COMPLETED,
+        },
+      });
+    }
+
+    // 5. On renvoie le même payload que GET /events/:eventId
+    return this.getEventDetails(eventId, currentUserId);
+  }
 }
