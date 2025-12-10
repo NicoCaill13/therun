@@ -333,7 +333,6 @@ describe('EventsController – Pacth /event (e2e)', () => {
       expect(body).toHaveProperty('eventRouteId', null);
       expect(body).toHaveProperty('eventGroupId', null);
 
-      // Vérifier en base que le rôle et le statut sont bien mis à jour
       const updated = await prisma.eventParticipant.findUnique({
         where: { id: runnerParticipant.id },
       });
