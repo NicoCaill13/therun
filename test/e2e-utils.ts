@@ -60,3 +60,11 @@ export function makeJwtToken(jwtService: JwtService, userId: string, userEmail: 
     plan,
   });
 }
+
+export const clearEventsAndRoutes = async (prisma: PrismaService) => {
+  await prisma.eventParticipant.deleteMany();
+  await prisma.eventGroup.deleteMany();
+  await prisma.eventRoute.deleteMany();
+  await prisma.route.deleteMany();
+  await prisma.event.deleteMany();
+};
