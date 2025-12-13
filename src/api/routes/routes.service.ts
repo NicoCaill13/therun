@@ -5,6 +5,8 @@ import { RouteDto } from './dto/route.dto';
 import { UserPlan } from '@prisma/client';
 import { computeCenterAndRadius, computeDistanceMeters, decodePolyline } from '@/utils/polyline.util';
 import { JwtUser } from '@/types/jwt';
+import { RouteListResponseDto } from './dto/route-list.dto';
+import { ListRoutesQueryDto } from './dto/list-routes-query.dto';
 
 @Injectable()
 export class RoutesService {
@@ -59,28 +61,6 @@ export class RoutesService {
     return this.toDto(route);
   }
 
-  /**
-   * GET /routes?createdBy=me
-   * MVP : on ne supporte que ce filtre pour éviter d’exposer toutes les routes.
-   */
-  async listRoutes(user: JwtUser, createdBy?: string): Promise<RouteDto[]> {
-    if (!createdBy) {
-      throw new BadRequestException('createdBy query param is required (ex: createdBy=me)');
-    }
-
-    if (createdBy !== 'me') {
-      // MVP : pas d’autre filtre exposé
-      throw new BadRequestException('Only createdBy=me is supported for now');
-    }
-
-    const routes = await this.prisma.route.findMany({
-      where: { ownerId: user.userId },
-      orderBy: { createdAt: 'desc' },
-    });
-
-    return routes.map((r) => this.toDto(r));
-  }
-
   private toDto(route: any): RouteDto {
     return {
       id: route.id,
@@ -94,6 +74,43 @@ export class RoutesService {
       type: route.type,
       createdAt: route.createdAt,
       updatedAt: route.updatedAt,
+    };
+  }
+
+  async listRoutes(user: JwtUser, params: ListRoutesQueryDto): Promise<RouteListResponseDto> {
+    const { createdBy, page: pageRaw, pageSize: pageSizeRaw } = params;
+    if (!createdBy) {
+      throw new BadRequestException('createdBy query param is required (ex: createdBy=me)');
+    }
+
+    if (createdBy !== 'me') {
+      throw new BadRequestException('Only createdBy=me is supported for now');
+    }
+
+    const page = pageRaw && pageRaw > 0 ? pageRaw : 1;
+
+    const pageSize = pageSizeRaw && pageSizeRaw > 0 && pageSizeRaw <= 100 ? pageSizeRaw : 20;
+
+    const where = { ownerId: user.userId };
+
+    const [totalCount, routes] = await this.prisma.$transaction([
+      this.prisma.route.count({ where }),
+      this.prisma.route.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+    ]);
+
+    const totalPages = totalCount === 0 ? 0 : Math.ceil(totalCount / pageSize);
+
+    return {
+      items: routes.map((r) => this.toDto(r)),
+      page,
+      pageSize,
+      totalCount,
+      totalPages,
     };
   }
 }

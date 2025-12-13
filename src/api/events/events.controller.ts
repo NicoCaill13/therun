@@ -16,7 +16,6 @@ import { CreateEventRouteDto } from '../event-routes/dto/create-event-route.dto'
 @ApiTags('Events')
 @ApiBearerAuth()
 @Controller('events')
-// @UseGuards(JwtAuthGuard) // à réactiver quand ton guard est prêt
 export class EventsController {
   constructor(
     private readonly eventsService: EventsService,
