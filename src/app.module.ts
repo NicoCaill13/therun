@@ -4,6 +4,7 @@ import { PrismaModule } from './infrastructure/db/prisma.module';
 import { EventsModule } from './api/events/events.module';
 import { AuthModule } from './infrastructure/auth/auth.module';
 import { RoutesModule } from './api/routes/routes.module';
+import { EventInvitesModule } from './api/event-invites/event-invites.module';
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { RoutesModule } from './api/routes/routes.module';
     EventsModule,
     AuthModule,
     RoutesModule,
+    EventInvitesModule,
   ],
 })
 export class AppModule { }
