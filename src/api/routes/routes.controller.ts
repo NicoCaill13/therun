@@ -6,6 +6,8 @@ import { RouteDto } from './dto/route.dto';
 import { JwtUser } from '@/types/jwt';
 import { CurrentUser } from '@/infrastructure/auth/user.decorator';
 import { RouteListResponseDto } from './dto/route-list.dto';
+import { SuggestRoutesQueryDto } from './dto/suggest-routes-query.dto';
+import { SuggestRoutesResponseDto } from './dto/suggest-routes-response.dto';
 
 @Controller('routes')
 @UseGuards(JwtAuthGuard)
@@ -17,13 +19,6 @@ export class RoutesController {
   async createRoute(@CurrentUser() user: JwtUser, @Body() dto: CreateRouteDto): Promise<RouteDto> {
     return this.routesService.createRoute(user, dto);
   }
-
-  // GET /routes/:routeId → détail
-  @Get(':routeId')
-  async getRoute(@Param('routeId') routeId: string, @CurrentUser() user: JwtUser): Promise<RouteDto> {
-    return this.routesService.getRouteById(routeId, user);
-  }
-
   // GET /routes?createdBy=me → “Mes parcours”
   @Get()
   async listRoutes(
@@ -39,5 +34,15 @@ export class RoutesController {
       page,
       pageSize,
     });
+  }
+
+  @Get('suggest')
+  suggest(@CurrentUser() user: JwtUser, @Query() query: SuggestRoutesQueryDto): Promise<SuggestRoutesResponseDto> {
+    return this.routesService.suggestRoutes(user, query);
+  }
+
+  @Get(':routeId')
+  async getRoute(@Param('routeId') routeId: string, @CurrentUser() user: JwtUser): Promise<RouteDto> {
+    return this.routesService.getRouteById(routeId, user);
   }
 }
