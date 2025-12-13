@@ -1,10 +1,11 @@
-import { Body, Controller, Get, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '@/infrastructure/auth/jwt-auth.guard';
 import { RoutesService } from './routes.service';
 import { CreateRouteDto } from './dto/create-route.dto';
 import { RouteDto } from './dto/route.dto';
 import { JwtUser } from '@/types/jwt';
 import { CurrentUser } from '@/infrastructure/auth/user.decorator';
+import { RouteListResponseDto } from './dto/route-list.dto';
 
 @Controller('routes')
 @UseGuards(JwtAuthGuard)
@@ -25,7 +26,18 @@ export class RoutesController {
 
   // GET /routes?createdBy=me → “Mes parcours”
   @Get()
-  async listRoutes(@CurrentUser() user: JwtUser, @Query('createdBy') createdBy?: string): Promise<RouteDto[]> {
-    return this.routesService.listRoutes(user, createdBy);
+  async listRoutes(
+    @CurrentUser() user: JwtUser,
+    @Query('createdBy') createdBy?: string,
+    @Query('page') pageRaw?: string,
+    @Query('pageSize') pageSizeRaw?: string,
+  ): Promise<RouteListResponseDto> {
+    const page = pageRaw ? parseInt(pageRaw, 10) : undefined;
+    const pageSize = pageSizeRaw ? parseInt(pageSizeRaw, 10) : undefined;
+    return this.routesService.listRoutes(user, {
+      createdBy,
+      page,
+      pageSize,
+    });
   }
 }
