@@ -6,6 +6,8 @@ import { PrismaClientExceptionFilter } from 'nestjs-prisma';
 import { ConfigService } from '@nestjs/config';
 import { ClassSerializerInterceptor } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
+import { AllExceptionsFilter } from './infrastructure/http/exception';
+import { SuccessResponseInterceptor } from './infrastructure/http/success';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -13,7 +15,9 @@ async function bootstrap() {
   app.enableVersioning();
 
   const reflector = app.get(Reflector);
-  app.useGlobalInterceptors(new ClassSerializerInterceptor(reflector));
+  const classSerializer = new ClassSerializerInterceptor(reflector);
+  const successWrapper = new SuccessResponseInterceptor(reflector);
+  app.useGlobalInterceptors(classSerializer, successWrapper);
 
   app.useGlobalPipes(
     new ValidationPipe({
@@ -41,6 +45,7 @@ async function bootstrap() {
       P2025: HttpStatus.NOT_FOUND,
       P2003: HttpStatus.BAD_REQUEST,
     }),
+    new AllExceptionsFilter(),
   );
   const configService = app.get(ConfigService);
   const port = configService.get('APP_PORT');

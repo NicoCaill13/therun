@@ -52,17 +52,16 @@ CREATE TABLE "Event" (
 -- CreateTable
 CREATE TABLE "Route" (
     "id" TEXT NOT NULL,
+    "ownerId" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+    "encodedPolyline" TEXT NOT NULL,
+    "distanceMeters" INTEGER NOT NULL,
+    "centerLat" DOUBLE PRECISION NOT NULL,
+    "centerLng" DOUBLE PRECISION NOT NULL,
+    "radiusMeters" DOUBLE PRECISION NOT NULL,
+    "type" "RouteType",
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
-    "name" TEXT NOT NULL,
-    "distanceMeters" INTEGER NOT NULL,
-    "ascentMeters" INTEGER,
-    "type" "RouteType" NOT NULL DEFAULT 'ROUTE',
-    "centerLat" DOUBLE PRECISION,
-    "centerLng" DOUBLE PRECISION,
-    "encodedPolyline" TEXT,
-    "tags" TEXT[],
-    "createdById" TEXT,
 
     CONSTRAINT "Route_pkey" PRIMARY KEY ("id")
 );
@@ -70,15 +69,14 @@ CREATE TABLE "Route" (
 -- CreateTable
 CREATE TABLE "EventRoute" (
     "id" TEXT NOT NULL,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3) NOT NULL,
     "eventId" TEXT NOT NULL,
     "routeId" TEXT,
     "name" TEXT NOT NULL,
     "distanceMeters" INTEGER NOT NULL,
-    "ascentMeters" INTEGER,
     "type" "RouteType",
-    "encodedPolyline" TEXT,
+    "encodedPolyline" TEXT NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "EventRoute_pkey" PRIMARY KEY ("id")
 );
@@ -136,7 +134,7 @@ CREATE INDEX "EventParticipant_eventId_status_idx" ON "EventParticipant"("eventI
 ALTER TABLE "Event" ADD CONSTRAINT "Event_organiserId_fkey" FOREIGN KEY ("organiserId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "Route" ADD CONSTRAINT "Route_createdById_fkey" FOREIGN KEY ("createdById") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "Route" ADD CONSTRAINT "Route_ownerId_fkey" FOREIGN KEY ("ownerId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "EventRoute" ADD CONSTRAINT "EventRoute_eventId_fkey" FOREIGN KEY ("eventId") REFERENCES "Event"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
@@ -154,7 +152,7 @@ ALTER TABLE "EventParticipant" ADD CONSTRAINT "EventParticipant_eventId_fkey" FO
 ALTER TABLE "EventParticipant" ADD CONSTRAINT "EventParticipant_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "EventParticipant" ADD CONSTRAINT "EventParticipant_eventRouteId_fkey" FOREIGN KEY ("eventRouteId") REFERENCES "EventRoute"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "EventParticipant" ADD CONSTRAINT "EventParticipant_eventGroupId_fkey" FOREIGN KEY ("eventGroupId") REFERENCES "EventGroup"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "EventParticipant" ADD CONSTRAINT "EventParticipant_eventGroupId_fkey" FOREIGN KEY ("eventGroupId") REFERENCES "EventGroup"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "EventParticipant" ADD CONSTRAINT "EventParticipant_eventRouteId_fkey" FOREIGN KEY ("eventRouteId") REFERENCES "EventRoute"("id") ON DELETE SET NULL ON UPDATE CASCADE;

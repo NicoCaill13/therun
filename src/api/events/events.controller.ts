@@ -9,13 +9,18 @@ import { JwtUser } from '@/types/jwt';
 import { EventDetailsResponseDto } from './dto/event-details-response.dto';
 import { EventParticipantDto } from '../event-participants/dto/event-participant.dto';
 import { UpdateParticipantRoleDto } from '../event-participants/dto/update-participant-role.dto';
+import { EventRoutesService } from '../event-routes/event-routes.service';
+import { EventRouteDto } from '../event-routes/dto/event-route.dto';
+import { CreateEventRouteDto } from '../event-routes/dto/create-event-route.dto';
 
 @ApiTags('Events')
 @ApiBearerAuth()
 @Controller('events')
-// @UseGuards(JwtAuthGuard) // à réactiver quand ton guard est prêt
 export class EventsController {
-  constructor(private readonly eventsService: EventsService) { }
+  constructor(
+    private readonly eventsService: EventsService,
+    private readonly eventRoutesService: EventRoutesService,
+  ) { }
 
   @UseGuards(JwtAuthGuard)
   @Post()
@@ -46,5 +51,21 @@ export class EventsController {
   async completeEvent(@Param('eventId') eventId: string, @CurrentUser() user: JwtUser) {
     const currentUserId = user.userId;
     return this.eventsService.completeEvent(eventId, currentUserId);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get(':eventId/routes')
+  async listRoutes(@Param('eventId') eventId: string): Promise<EventRouteDto[]> {
+    return this.eventRoutesService.listByEvent(eventId);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post(':eventId/routes')
+  async addRoute(
+    @Param('eventId') eventId: string,
+    @Body() dto: CreateEventRouteDto,
+    @CurrentUser() user: JwtUser,
+  ): Promise<EventRouteDto> {
+    return this.eventRoutesService.addRouteToEvent(eventId, user, dto);
   }
 }
