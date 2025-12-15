@@ -4,7 +4,7 @@ import { PrismaService } from '@/infrastructure/db/prisma.service';
 import { EventParticipantStatus, EventStatus, RoleInEvent, User, UserPlan } from '@prisma/client';
 import { CreateEventDto } from './dto/create-event.dto';
 import { UserService } from '../users/user.service';
-import { EventParticipantService } from '../event-participants/event-participant.service';
+import { EventParticipantsService } from '../event-participants/event-participants.service';
 import { EventBlockResponseDto, EventDetailsResponseDto } from './dto/event-details-response.dto';
 import { CurrentUserParticipationResponseDto, EventParticipantDto } from '../event-participants/dto/event-participant.dto';
 import { SimpleUserResponseDto } from '../users/dto/simple-user.dto';
@@ -16,7 +16,7 @@ export class EventsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly userService: UserService,
-    private readonly eventParticipantService: EventParticipantService,
+    private readonly eventParticipantService: EventParticipantsService,
   ) { }
 
   // petit générateur de code évenement lisible
