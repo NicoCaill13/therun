@@ -1,10 +1,10 @@
 import { Module } from '@nestjs/common';
-import { EventParticipantService } from './event-participant.service';
+import { EventParticipantsService } from './event-participants.service';
 import { PrismaService } from '@/infrastructure/db/prisma.service';
 
 @Module({
   imports: [],
-  providers: [EventParticipantService, PrismaService],
-  exports: [EventParticipantService],
+  providers: [EventParticipantsService, PrismaService],
+  exports: [EventParticipantsService],
 })
 export class EventParticipantsModule { }

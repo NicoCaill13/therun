@@ -12,6 +12,9 @@ import { UpdateParticipantRoleDto } from '../event-participants/dto/update-parti
 import { EventRoutesService } from '../event-routes/event-routes.service';
 import { EventRouteDto } from '../event-routes/dto/event-route.dto';
 import { CreateEventRouteDto } from '../event-routes/dto/create-event-route.dto';
+import { InviteParticipantDto } from '../event-participants/dto/invite-participant.dto';
+import { InviteParticipantResponseDto } from '../event-participants/dto/invite-participant-response.dto';
+import { EventParticipantsService } from '../event-participants/event-participants.service';
 
 @ApiTags('Events')
 @ApiBearerAuth()
@@ -20,6 +23,7 @@ export class EventsController {
   constructor(
     private readonly eventsService: EventsService,
     private readonly eventRoutesService: EventRoutesService,
+    private readonly eventParticipantsService: EventParticipantsService,
   ) { }
 
   @UseGuards(JwtAuthGuard)
@@ -33,6 +37,17 @@ export class EventsController {
   @Get(':eventId')
   async findOne(@CurrentUser() user: JwtUser, @Param('eventId') eventId: string): Promise<EventDetailsResponseDto> {
     return this.eventsService.getEventDetails(eventId, user.userId);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post(':eventId/participants/invite')
+  async invite(
+    @Param('eventId') eventId: string,
+    @CurrentUser() user: JwtUser,
+    @Body() dto: InviteParticipantDto,
+  ): Promise<InviteParticipantResponseDto> {
+    const result = await this.eventParticipantsService.inviteExistingUser(eventId, user.userId, dto);
+    return result.data;
   }
 
   @UseGuards(JwtAuthGuard)
