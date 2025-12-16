@@ -1,5 +1,5 @@
 // src/events/events.controller.ts
-import { Controller, Get, Post, Body, Patch, Param, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, UseGuards, HttpCode } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { EventsService } from './events.service';
 import { CreateEventDto } from './dto/create-event.dto';
@@ -15,6 +15,8 @@ import { CreateEventRouteDto } from '../event-routes/dto/create-event-route.dto'
 import { InviteParticipantDto } from '../event-participants/dto/invite-participant.dto';
 import { InviteParticipantResponseDto } from '../event-participants/dto/invite-participant-response.dto';
 import { EventParticipantsService } from '../event-participants/event-participants.service';
+import { RespondInvitationResponseDto } from '../event-participants/dto/respond-invitation-response.dto';
+import { RespondInvitationDto } from '../event-participants/dto/respond-invitation.dto';
 
 @ApiTags('Events')
 @ApiBearerAuth()
@@ -59,6 +61,18 @@ export class EventsController {
     @CurrentUser() user: JwtUser,
   ): Promise<EventParticipantDto> {
     return this.eventsService.updateParticipantRole(eventId, userId, user.userId, dto);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post(':eventId/participants/:participantId/respond')
+  @HttpCode(204)
+  respond(
+    @Param('eventId') eventId: string,
+    @Param('participantId') participantId: string,
+    @CurrentUser() user: JwtUser,
+    @Body() dto: RespondInvitationDto,
+  ): Promise<RespondInvitationResponseDto> {
+    return this.eventParticipantsService.respondToInvitation(eventId, participantId, user.userId, dto);
   }
 
   @UseGuards(JwtAuthGuard)
