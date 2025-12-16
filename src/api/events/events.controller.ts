@@ -1,5 +1,5 @@
 // src/events/events.controller.ts
-import { Controller, Get, Post, Body, Patch, Param, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, UseGuards, HttpCode } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { EventsService } from './events.service';
 import { CreateEventDto } from './dto/create-event.dto';
@@ -12,6 +12,11 @@ import { UpdateParticipantRoleDto } from '../event-participants/dto/update-parti
 import { EventRoutesService } from '../event-routes/event-routes.service';
 import { EventRouteDto } from '../event-routes/dto/event-route.dto';
 import { CreateEventRouteDto } from '../event-routes/dto/create-event-route.dto';
+import { InviteParticipantDto } from '../event-participants/dto/invite-participant.dto';
+import { InviteParticipantResponseDto } from '../event-participants/dto/invite-participant-response.dto';
+import { EventParticipantsService } from '../event-participants/event-participants.service';
+import { RespondInvitationResponseDto } from '../event-participants/dto/respond-invitation-response.dto';
+import { RespondInvitationDto } from '../event-participants/dto/respond-invitation.dto';
 
 @ApiTags('Events')
 @ApiBearerAuth()
@@ -20,6 +25,7 @@ export class EventsController {
   constructor(
     private readonly eventsService: EventsService,
     private readonly eventRoutesService: EventRoutesService,
+    private readonly eventParticipantsService: EventParticipantsService,
   ) { }
 
   @UseGuards(JwtAuthGuard)
@@ -36,6 +42,17 @@ export class EventsController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @Post(':eventId/participants/invite')
+  async invite(
+    @Param('eventId') eventId: string,
+    @CurrentUser() user: JwtUser,
+    @Body() dto: InviteParticipantDto,
+  ): Promise<InviteParticipantResponseDto> {
+    const result = await this.eventParticipantsService.inviteExistingUser(eventId, user.userId, dto);
+    return result.data;
+  }
+
+  @UseGuards(JwtAuthGuard)
   @Patch(':eventId/participants/:userId/role')
   async updateParticipantRole(
     @Param('eventId') eventId: string,
@@ -44,6 +61,18 @@ export class EventsController {
     @CurrentUser() user: JwtUser,
   ): Promise<EventParticipantDto> {
     return this.eventsService.updateParticipantRole(eventId, userId, user.userId, dto);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post(':eventId/participants/:participantId/respond')
+  @HttpCode(200)
+  respond(
+    @Param('eventId') eventId: string,
+    @Param('participantId') participantId: string,
+    @CurrentUser() user: JwtUser,
+    @Body() dto: RespondInvitationDto,
+  ): Promise<RespondInvitationResponseDto> {
+    return this.eventParticipantsService.respondToInvitation(eventId, participantId, user.userId, dto);
   }
 
   @UseGuards(JwtAuthGuard)
