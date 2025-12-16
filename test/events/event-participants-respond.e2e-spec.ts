@@ -123,7 +123,7 @@ describe('EventParticipantsController – POST /events/:eventId/participants/:pa
       data: { status: EventParticipantStatus.INVITED },
     });
 
-    await postRespond(invitedUserToken, event.id, participant.id, { status: 'GOING' }).expect(204);
+    await postRespond(invitedUserToken, event.id, participant.id, { status: 'GOING' }).expect(200);
 
     const inDb = await prisma.eventParticipant.findUnique({ where: { id: participant.id } });
     expect(inDb?.status).toBe(EventParticipantStatus.GOING);

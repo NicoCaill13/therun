@@ -65,7 +65,7 @@ export class EventsController {
 
   @UseGuards(JwtAuthGuard)
   @Post(':eventId/participants/:participantId/respond')
-  @HttpCode(204)
+  @HttpCode(200)
   respond(
     @Param('eventId') eventId: string,
     @Param('participantId') participantId: string,
