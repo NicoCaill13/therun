@@ -5,6 +5,7 @@ import { EventsModule } from './api/events/events.module';
 import { AuthModule } from './infrastructure/auth/auth.module';
 import { RoutesModule } from './api/routes/routes.module';
 import { EventInvitesModule } from './api/event-invites/event-invites.module';
+import { MeModule } from './api/me/me.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { EventInvitesModule } from './api/event-invites/event-invites.module';
     AuthModule,
     RoutesModule,
     EventInvitesModule,
+    MeModule,
   ],
 })
 export class AppModule { }
