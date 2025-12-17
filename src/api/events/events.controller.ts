@@ -1,5 +1,5 @@
 // src/events/events.controller.ts
-import { Controller, Get, Post, Body, Patch, Param, UseGuards, HttpCode } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, UseGuards, HttpCode, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { EventsService } from './events.service';
 import { CreateEventDto } from './dto/create-event.dto';
@@ -19,6 +19,8 @@ import { RespondInvitationResponseDto } from '../event-participants/dto/respond-
 import { RespondInvitationDto } from '../event-participants/dto/respond-invitation.dto';
 import { UpsertMyParticipationDto } from '../event-participants/dto/upsert-my-participation.dto';
 import { UpdateMySelectionDto } from '../event-participants/dto/update-my-selection.dto';
+import { ListEventParticipantsQueryDto } from '../event-participants/dto/list-event-participants-query.dto';
+import { EventParticipantsListResponseDto } from '../event-participants/dto/event-participants-list.dto';
 
 @ApiTags('Events')
 @ApiBearerAuth()
@@ -120,5 +122,15 @@ export class EventsController {
     @Body() dto: UpdateMySelectionDto,
   ): Promise<EventParticipantDto> {
     return this.eventParticipantsService.updateMySelection(eventId, user.userId, dto);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get(':eventId/participants')
+  listParticipants(
+    @Param('eventId') eventId: string,
+    @CurrentUser() user: JwtUser,
+    @Query() query: ListEventParticipantsQueryDto,
+  ): Promise<EventParticipantsListResponseDto> {
+    return this.eventParticipantsService.listEventParticipantsForOrganiser(eventId, user.userId, query);
   }
 }
