@@ -8,6 +8,8 @@ import { RespondInvitationResponseDto } from './dto/respond-invitation-response.
 import { EventParticipantDto } from './dto/event-participant.dto';
 import { UpsertMyParticipationDto } from './dto/upsert-my-participation.dto';
 import { UpdateMySelectionDto } from './dto/update-my-selection.dto';
+import { ListEventParticipantsQueryDto } from './dto/list-event-participants-query.dto';
+import { EventParticipantsListResponseDto } from './dto/event-participants-list.dto';
 
 @Injectable()
 export class EventParticipantsService {
@@ -301,6 +303,67 @@ export class EventParticipantsService {
       status: p.status as EventParticipantStatus,
       eventRouteId: p.eventRouteId ?? null,
       eventGroupId: p.eventGroupId ?? null,
+    };
+  }
+
+  async listEventParticipantsForOrganiser(
+    eventId: string,
+    organiserId: string,
+    q: ListEventParticipantsQueryDto,
+  ): Promise<EventParticipantsListResponseDto> {
+    const event = await this.prisma.event.findUnique({
+      where: { id: eventId },
+      select: { id: true, organiserId: true },
+    });
+    if (!event) throw new NotFoundException('Event not found');
+    if (event.organiserId !== organiserId) throw new ForbiddenException('Only organiser can view participants');
+
+    const page = q.page ?? 1;
+    const pageSize = q.pageSize ?? 20;
+
+    // default: exclude DECLINED
+    const where: any = {
+      eventId,
+      ...(q.status ? { status: q.status } : { status: { not: EventParticipantStatus.DECLINED } }),
+      ...(q.eventRouteId ? { eventRouteId: q.eventRouteId } : {}),
+      ...(q.eventGroupId ? { eventGroupId: q.eventGroupId } : {}),
+    };
+
+    const [totalCount, rows] = await this.prisma.$transaction([
+      this.prisma.eventParticipant.count({ where }),
+      this.prisma.eventParticipant.findMany({
+        where,
+        include: {
+          user: { select: { firstName: true, lastName: true } },
+          eventRoute: { select: { id: true, name: true } },
+          eventGroup: { select: { id: true, label: true } },
+        },
+        orderBy: { createdAt: 'asc' },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+    ]);
+
+    const totalPages = totalCount === 0 ? 0 : Math.ceil(totalCount / pageSize);
+
+    return {
+      items: rows.map((p) => {
+        const displayName = p.user?.lastName ? `${p.user.firstName} ${p.user.lastName}` : (p.user?.firstName ?? 'Guest');
+
+        return {
+          participantId: p.id,
+          userId: p.userId ?? null,
+          displayName,
+          roleInEvent: p.role as any,
+          status: p.status as any,
+          eventRoute: p.eventRoute ? { id: p.eventRoute.id, name: p.eventRoute.name } : null,
+          eventGroup: p.eventGroup ? { id: p.eventGroup.id, label: p.eventGroup.label } : null,
+        };
+      }),
+      page,
+      pageSize,
+      totalCount,
+      totalPages,
     };
   }
 }
