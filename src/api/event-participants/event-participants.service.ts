@@ -5,6 +5,8 @@ import { InviteParticipantResponseDto } from './dto/invite-participant-response.
 import { InviteParticipantDto } from './dto/invite-participant.dto';
 import { RespondInvitationDto } from './dto/respond-invitation.dto';
 import { RespondInvitationResponseDto } from './dto/respond-invitation-response.dto';
+import { EventParticipantDto } from './dto/event-participant.dto';
+import { UpsertMyParticipationDto } from './dto/upsert-my-participation.dto';
 
 @Injectable()
 export class EventParticipantsService {
@@ -145,6 +147,52 @@ export class EventParticipantsService {
       userId: updated.userId!,
       role: updated.role as any,
       status: updated.status as any,
+    };
+  }
+
+  async upsertMyParticipation(eventId: string, userId: string, dto: UpsertMyParticipationDto): Promise<EventParticipantDto> {
+    const event = await this.prisma.event.findUnique({ where: { id: eventId } });
+    if (!event) throw new NotFoundException('Event not found');
+
+    const participant = await this.prisma.$transaction(async (tx) => {
+      const existing = await tx.eventParticipant.findFirst({
+        where: { eventId, userId },
+        select: { id: true },
+      });
+
+      if (existing) {
+        return tx.eventParticipant.update({
+          where: { id: existing.id },
+          data: { status: dto.status },
+          include: { user: { select: { firstName: true, lastName: true } } },
+        });
+      }
+
+      return tx.eventParticipant.create({
+        data: {
+          eventId,
+          userId,
+          role: RoleInEvent.PARTICIPANT,
+          status: dto.status,
+          eventRouteId: null,
+          eventGroupId: null,
+        },
+        include: { user: { select: { firstName: true, lastName: true } } },
+      });
+    });
+
+    return this.toDto(participant);
+  }
+
+  private toDto(p: any): EventParticipantDto {
+    const displayName = p.user?.lastName ? `${p.user.firstName} ${p.user.lastName}` : `${p.user?.firstName ?? ''}`.trim();
+    return {
+      userId: p.userId,
+      displayName,
+      roleInEvent: p.role,
+      status: p.status as EventParticipantStatus,
+      eventRouteId: p.eventRouteId ?? null,
+      eventGroupId: p.eventGroupId ?? null,
     };
   }
 }
