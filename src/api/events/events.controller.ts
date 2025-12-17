@@ -21,6 +21,7 @@ import { UpsertMyParticipationDto } from '../event-participants/dto/upsert-my-pa
 import { UpdateMySelectionDto } from '../event-participants/dto/update-my-selection.dto';
 import { ListEventParticipantsQueryDto } from '../event-participants/dto/list-event-participants-query.dto';
 import { EventParticipantsListResponseDto } from '../event-participants/dto/event-participants-list.dto';
+import { EventParticipantsSummaryDto } from '../event-participants/dto/event-participants-summary.dto';
 
 @ApiTags('Events')
 @ApiBearerAuth()
@@ -132,5 +133,11 @@ export class EventsController {
     @Query() query: ListEventParticipantsQueryDto,
   ): Promise<EventParticipantsListResponseDto> {
     return this.eventParticipantsService.listEventParticipantsForOrganiser(eventId, user.userId, query);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get(':eventId/participants/summary')
+  getParticipantsSummary(@Param('eventId') eventId: string, @CurrentUser() user: JwtUser): Promise<EventParticipantsSummaryDto> {
+    return this.eventParticipantsService.getParticipantsSummary(eventId, user.userId);
   }
 }
