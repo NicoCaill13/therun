@@ -1,4 +1,4 @@
-import { ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '@/infrastructure/db/prisma.service';
 import { EventParticipantStatus, RoleInEvent } from '@prisma/client';
 import { InviteParticipantResponseDto } from './dto/invite-participant-response.dto';
@@ -7,6 +7,7 @@ import { RespondInvitationDto } from './dto/respond-invitation.dto';
 import { RespondInvitationResponseDto } from './dto/respond-invitation-response.dto';
 import { EventParticipantDto } from './dto/event-participant.dto';
 import { UpsertMyParticipationDto } from './dto/upsert-my-participation.dto';
+import { UpdateMySelectionDto } from './dto/update-my-selection.dto';
 
 @Injectable()
 export class EventParticipantsService {
@@ -182,6 +183,113 @@ export class EventParticipantsService {
     });
 
     return this.toDto(participant);
+  }
+
+  async updateMySelection(eventId: string, userId: string, dto: UpdateMySelectionDto): Promise<EventParticipantDto> {
+    // 1) au moins un champ présent
+    const hasRoute = dto.eventRouteId !== undefined; // null = présent
+    const hasGroup = dto.eventGroupId !== undefined;
+    if (!hasRoute && !hasGroup) {
+      throw new BadRequestException('At least one of eventRouteId or eventGroupId must be provided');
+    }
+
+    // 2) event existe
+    const event = await this.prisma.event.findUnique({
+      where: { id: eventId },
+      select: { id: true },
+    });
+    if (!event) throw new NotFoundException('Event not found');
+
+    // 3) participant existe
+    const participant = await this.prisma.eventParticipant.findFirst({
+      where: { eventId, userId },
+      include: { user: { select: { firstName: true, lastName: true } } },
+    });
+    if (!participant) {
+      throw new ConflictException('You must RSVP before selecting a route/group');
+    }
+
+    // Helpers de cohérence
+    const loadEventRoute = async (eventRouteId: string) => {
+      const er = await this.prisma.eventRoute.findFirst({
+        where: { id: eventRouteId, eventId },
+        select: { id: true },
+      });
+      if (!er) throw new NotFoundException('EventRoute not found');
+      return er;
+    };
+
+    const loadEventGroup = async (eventGroupId: string) => {
+      const g = await this.prisma.eventGroup.findUnique({
+        where: { id: eventGroupId },
+        select: { id: true, eventRouteId: true },
+      });
+      if (!g) throw new NotFoundException('EventGroup not found');
+
+      // s’assurer que le group appartient à un EventRoute de CET event
+      const routeOfGroup = await this.prisma.eventRoute.findFirst({
+        where: { id: g.eventRouteId, eventId },
+        select: { id: true },
+      });
+      if (!routeOfGroup) throw new NotFoundException('EventGroup not found');
+
+      return g;
+    };
+
+    // 4) validations
+    // eventRouteId fourni (non-null)
+    if (hasRoute && dto.eventRouteId !== null) {
+      await loadEventRoute(dto.eventRouteId!);
+    }
+
+    // eventGroupId fourni (non-null)
+    let group: { id: string; eventRouteId: string } | null = null;
+    if (hasGroup && dto.eventGroupId !== null) {
+      group = await loadEventGroup(dto.eventGroupId!);
+    }
+
+    // cohérence group vs route
+    // cas: group + route fournis
+    if (hasGroup && dto.eventGroupId !== null && hasRoute && dto.eventRouteId !== null) {
+      if (group!.eventRouteId !== dto.eventRouteId) {
+        throw new ConflictException('EventGroup does not belong to selected EventRoute');
+      }
+    }
+
+    // cas: group fourni, route NON fourni
+    if (hasGroup && dto.eventGroupId !== null && !hasRoute) {
+      if (!participant.eventRouteId) {
+        throw new ConflictException('You must select a route before selecting a group');
+      }
+      if (group!.eventRouteId !== participant.eventRouteId) {
+        throw new ConflictException('EventGroup does not belong to selected EventRoute');
+      }
+    }
+
+    // 5) persistance
+    const data: any = {};
+
+    // route présent => update route (y compris null)
+    if (hasRoute) {
+      data.eventRouteId = dto.eventRouteId;
+      // si route = null => group auto null
+      if (dto.eventRouteId === null) {
+        data.eventGroupId = null;
+      }
+    }
+
+    // group présent => update group (y compris null)
+    if (hasGroup) {
+      data.eventGroupId = dto.eventGroupId;
+    }
+
+    const updated = await this.prisma.eventParticipant.update({
+      where: { id: participant.id },
+      data,
+      include: { user: { select: { firstName: true, lastName: true } } },
+    });
+
+    return this.toDto(updated);
   }
 
   private toDto(p: any): EventParticipantDto {
