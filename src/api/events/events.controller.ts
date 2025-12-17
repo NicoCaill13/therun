@@ -17,6 +17,7 @@ import { InviteParticipantResponseDto } from '../event-participants/dto/invite-p
 import { EventParticipantsService } from '../event-participants/event-participants.service';
 import { RespondInvitationResponseDto } from '../event-participants/dto/respond-invitation-response.dto';
 import { RespondInvitationDto } from '../event-participants/dto/respond-invitation.dto';
+import { UpsertMyParticipationDto } from '../event-participants/dto/upsert-my-participation.dto';
 
 @ApiTags('Events')
 @ApiBearerAuth()
@@ -96,5 +97,16 @@ export class EventsController {
     @CurrentUser() user: JwtUser,
   ): Promise<EventRouteDto> {
     return this.eventRoutesService.addRouteToEvent(eventId, user, dto);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post(':eventId/participants/me')
+  @HttpCode(200)
+  upsertMyParticipation(
+    @Param('eventId') eventId: string,
+    @CurrentUser() user: JwtUser,
+    @Body() dto: UpsertMyParticipationDto,
+  ): Promise<EventParticipantDto> {
+    return this.eventParticipantsService.upsertMyParticipation(eventId, user.userId, dto);
   }
 }
