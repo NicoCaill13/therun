@@ -18,6 +18,7 @@ import { EventParticipantsService } from '../event-participants/event-participan
 import { RespondInvitationResponseDto } from '../event-participants/dto/respond-invitation-response.dto';
 import { RespondInvitationDto } from '../event-participants/dto/respond-invitation.dto';
 import { UpsertMyParticipationDto } from '../event-participants/dto/upsert-my-participation.dto';
+import { UpdateMySelectionDto } from '../event-participants/dto/update-my-selection.dto';
 
 @ApiTags('Events')
 @ApiBearerAuth()
@@ -108,5 +109,16 @@ export class EventsController {
     @Body() dto: UpsertMyParticipationDto,
   ): Promise<EventParticipantDto> {
     return this.eventParticipantsService.upsertMyParticipation(eventId, user.userId, dto);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Patch(':eventId/participants/me')
+  @HttpCode(200)
+  updateMySelection(
+    @Param('eventId') eventId: string,
+    @CurrentUser() user: JwtUser,
+    @Body() dto: UpdateMySelectionDto,
+  ): Promise<EventParticipantDto> {
+    return this.eventParticipantsService.updateMySelection(eventId, user.userId, dto);
   }
 }
