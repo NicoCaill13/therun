@@ -10,6 +10,7 @@ import { UpsertMyParticipationDto } from './dto/upsert-my-participation.dto';
 import { UpdateMySelectionDto } from './dto/update-my-selection.dto';
 import { ListEventParticipantsQueryDto } from './dto/list-event-participants-query.dto';
 import { EventParticipantsListResponseDto } from './dto/event-participants-list.dto';
+import { EventParticipantsSummaryDto } from './dto/event-participants-summary.dto';
 
 @Injectable()
 export class EventParticipantsService {
@@ -365,5 +366,67 @@ export class EventParticipantsService {
       totalCount,
       totalPages,
     };
+  }
+
+  async getParticipantsSummary(eventId: string, organiserId: string): Promise<EventParticipantsSummaryDto> {
+    const event = await this.prisma.event.findUnique({
+      where: { id: eventId },
+      select: { id: true, organiserId: true },
+    });
+    if (!event) throw new NotFoundException('Event not found');
+    if (event.organiserId !== organiserId) throw new ForbiddenException('Only organiser can view participants');
+
+    // counts principaux
+    const [goingCount, invitedCount, maybeCount] = await Promise.all([
+      this.prisma.eventParticipant.count({ where: { eventId, status: EventParticipantStatus.GOING } }),
+      this.prisma.eventParticipant.count({ where: { eventId, status: EventParticipantStatus.INVITED } }),
+      this.prisma.eventParticipant.count({ where: { eventId, status: EventParticipantStatus.MAYBE } }),
+    ]);
+
+    // répartition par parcours (GOING uniquement)
+    const routes = await this.prisma.eventRoute.findMany({
+      where: { eventId },
+      select: { id: true, name: true },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    const goingByRoute = await this.prisma.eventParticipant.groupBy({
+      by: ['eventRouteId'],
+      where: { eventId, status: EventParticipantStatus.GOING, eventRouteId: { not: null } },
+      _count: { _all: true },
+    });
+
+    const byRoute = routes.map((r) => {
+      const found = goingByRoute.find((x) => x.eventRouteId === r.id);
+      return {
+        eventRouteId: r.id,
+        name: r.name,
+        goingCount: found?._count._all ?? 0,
+      };
+    });
+
+    // répartition par groupes (GOING uniquement)
+    const groups = await this.prisma.eventGroup.findMany({
+      where: { eventRoute: { eventId } },
+      select: { id: true, label: true },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    const goingByGroup = await this.prisma.eventParticipant.groupBy({
+      by: ['eventGroupId'],
+      where: { eventId, status: EventParticipantStatus.GOING, eventGroupId: { not: null } },
+      _count: { _all: true },
+    });
+
+    const byGroup = groups.map((g) => {
+      const found = goingByGroup.find((x) => x.eventGroupId === g.id);
+      return {
+        eventGroupId: g.id,
+        label: g.label,
+        goingCount: found?._count._all ?? 0,
+      };
+    });
+
+    return { goingCount, invitedCount, maybeCount, byRoute, byGroup };
   }
 }

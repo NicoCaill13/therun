@@ -2,7 +2,7 @@ import * as request from 'supertest';
 import { INestApplication } from '@nestjs/common';
 import { PrismaService } from '@/infrastructure/db/prisma.service';
 import { EventParticipantStatus, RoleInEvent, UserPlan } from '@prisma/client';
-import { createE2eApp, seedUser, makeJwtToken } from '../e2e-utils';
+import { createE2eApp, seedUser, makeJwtToken, clearAll } from '../e2e-utils';
 
 describe('EventParticipantsController – POST /events/:eventId/participants/invite (e2e)', () => {
   let app: INestApplication;
@@ -25,12 +25,7 @@ describe('EventParticipantsController – POST /events/:eventId/participants/inv
     const jwtService = ctx.jwtService;
 
     // Clean
-    await prisma.eventParticipant.deleteMany();
-    await prisma.eventGroup.deleteMany();
-    await prisma.eventRoute.deleteMany();
-    await prisma.route.deleteMany();
-    await prisma.event.deleteMany();
-    await prisma.user.deleteMany();
+    await clearAll(prisma);
 
     organiser = await seedUser(prisma, UserPlan.FREE, { firstName: 'Organiser' });
     organiserToken = makeJwtToken(jwtService, organiser.id, organiser.email, UserPlan.FREE);
