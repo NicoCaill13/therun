@@ -4,6 +4,7 @@ import { PrismaService } from '@/infrastructure/db/prisma.service';
 import { EventParticipantStatus, NotificationType } from '@prisma/client';
 
 const OFFSET_MINUTES = 120;
+const ORGANISER_OFFSET_MINUTES = 180;
 const WINDOW_MINUTES = 10;
 
 function addMinutes(d: Date, minutes: number) {
@@ -18,7 +19,9 @@ export class RemindersService {
 
   @Cron('*/10 * * * *')
   async handleCron() {
-    await this.runParticipantReminders(new Date());
+    const now = new Date();
+    await this.runParticipantReminders(now);
+    await this.runOrganiserReminders(now);
   }
 
   async runParticipantReminders(now: Date) {
@@ -92,6 +95,111 @@ export class RemindersService {
     }
 
     this.logger.log(`Participant reminders created: ${created}`);
+    return { created };
+  }
+
+  async runOrganiserReminders(now: Date) {
+    const startMin = addMinutes(now, ORGANISER_OFFSET_MINUTES);
+    const startMax = addMinutes(now, ORGANISER_OFFSET_MINUTES + WINDOW_MINUTES);
+
+    const events = await this.prisma.event.findMany({
+      where: { startDateTime: { gte: startMin, lt: startMax } },
+      select: {
+        id: true,
+        title: true,
+        startDateTime: true,
+        locationName: true,
+        locationAddress: true,
+        organiserId: true,
+      },
+    });
+
+    let created = 0;
+
+    for (const ev of events) {
+      // MVP rule: envoyer seulement si goingCount >= 1 (hors organisateur ça dépend, mais on compte GOING total)
+      const [goingCount, invitedCount, maybeCount] = await Promise.all([
+        this.prisma.eventParticipant.count({ where: { eventId: ev.id, status: EventParticipantStatus.GOING } }),
+        this.prisma.eventParticipant.count({ where: { eventId: ev.id, status: EventParticipantStatus.INVITED } }),
+        this.prisma.eventParticipant.count({ where: { eventId: ev.id, status: EventParticipantStatus.MAYBE } }),
+      ]);
+
+      if (goingCount < 1) continue;
+
+      // distributions GOING
+      const routes = await this.prisma.eventRoute.findMany({
+        where: { eventId: ev.id },
+        select: { id: true, name: true },
+        orderBy: { createdAt: 'asc' },
+      });
+
+      const goingByRoute = await this.prisma.eventParticipant.groupBy({
+        by: ['eventRouteId'],
+        where: { eventId: ev.id, status: EventParticipantStatus.GOING, eventRouteId: { not: null } },
+        _count: { _all: true },
+      });
+
+      const byRoute = routes.map((r) => ({
+        eventRouteId: r.id,
+        name: r.name,
+        goingCount: goingByRoute.find((x) => x.eventRouteId === r.id)?._count._all ?? 0,
+      }));
+
+      const groups = await this.prisma.eventGroup.findMany({
+        where: { eventRoute: { eventId: ev.id } },
+        select: { id: true, label: true },
+        orderBy: { createdAt: 'asc' },
+      });
+
+      const goingByGroup = await this.prisma.eventParticipant.groupBy({
+        by: ['eventGroupId'],
+        where: { eventId: ev.id, status: EventParticipantStatus.GOING, eventGroupId: { not: null } },
+        _count: { _all: true },
+      });
+
+      const byGroup = groups.map((g) => ({
+        eventGroupId: g.id,
+        label: g.label,
+        goingCount: goingByGroup.find((x) => x.eventGroupId === g.id)?._count._all ?? 0,
+      }));
+
+      const title = `Rappel organisateur – ${ev.title}`;
+      const body = [
+        `Départ: ${ev.startDateTime.toISOString()}`,
+        ev.locationName ? `Lieu: ${ev.locationName}` : null,
+        ev.locationAddress ? `Adresse: ${ev.locationAddress}` : null,
+        `GOING: ${goingCount}`,
+        `INVITED: ${invitedCount}`,
+        `MAYBE: ${maybeCount}`,
+      ]
+        .filter(Boolean)
+        .join(' • ');
+
+      const res = await this.prisma.notification.createMany({
+        data: [
+          {
+            userId: ev.organiserId,
+            eventId: ev.id,
+            type: NotificationType.EVENT_REMINDER_ORGANISER,
+            title,
+            body,
+            data: {
+              eventId: ev.id,
+              goingCount,
+              invitedCount,
+              maybeCount,
+              byRoute,
+              byGroup,
+            },
+          },
+        ],
+        skipDuplicates: true,
+      });
+
+      created += res.count;
+    }
+
+    this.logger.log(`Organiser reminders created: ${created}`);
     return { created };
   }
 }

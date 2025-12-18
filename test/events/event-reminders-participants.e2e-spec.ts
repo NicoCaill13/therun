@@ -1,6 +1,6 @@
 import { INestApplication } from '@nestjs/common';
 import { PrismaService } from '@/infrastructure/db/prisma.service';
-import { createE2eApp, seedUser } from '../e2e-utils';
+import { clearAll, createE2eApp, seedUser } from '../e2e-utils';
 import { EventParticipantStatus, EventStatus, RoleInEvent, UserPlan, NotificationType } from '@prisma/client';
 import { RemindersService } from '@/api/reminders/reminders.service';
 
@@ -16,10 +16,7 @@ describe('Participant reminders (e2e)', () => {
 
     reminders = app.get(RemindersService);
 
-    await prisma.notification.deleteMany();
-    await prisma.eventParticipant.deleteMany();
-    await prisma.event.deleteMany();
-    await prisma.user.deleteMany();
+    await clearAll(prisma);
   });
 
   afterAll(async () => {
