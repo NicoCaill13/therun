@@ -1,5 +1,5 @@
 // src/events/events.controller.ts
-import { Controller, Get, Post, Body, Patch, Param, UseGuards, HttpCode } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, UseGuards, HttpCode, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { EventsService } from './events.service';
 import { CreateEventDto } from './dto/create-event.dto';
@@ -17,6 +17,11 @@ import { InviteParticipantResponseDto } from '../event-participants/dto/invite-p
 import { EventParticipantsService } from '../event-participants/event-participants.service';
 import { RespondInvitationResponseDto } from '../event-participants/dto/respond-invitation-response.dto';
 import { RespondInvitationDto } from '../event-participants/dto/respond-invitation.dto';
+import { UpsertMyParticipationDto } from '../event-participants/dto/upsert-my-participation.dto';
+import { UpdateMySelectionDto } from '../event-participants/dto/update-my-selection.dto';
+import { ListEventParticipantsQueryDto } from '../event-participants/dto/list-event-participants-query.dto';
+import { EventParticipantsListResponseDto } from '../event-participants/dto/event-participants-list.dto';
+import { EventParticipantsSummaryDto } from '../event-participants/dto/event-participants-summary.dto';
 
 @ApiTags('Events')
 @ApiBearerAuth()
@@ -96,5 +101,43 @@ export class EventsController {
     @CurrentUser() user: JwtUser,
   ): Promise<EventRouteDto> {
     return this.eventRoutesService.addRouteToEvent(eventId, user, dto);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post(':eventId/participants/me')
+  @HttpCode(200)
+  upsertMyParticipation(
+    @Param('eventId') eventId: string,
+    @CurrentUser() user: JwtUser,
+    @Body() dto: UpsertMyParticipationDto,
+  ): Promise<EventParticipantDto> {
+    return this.eventParticipantsService.upsertMyParticipation(eventId, user.userId, dto);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Patch(':eventId/participants/me')
+  @HttpCode(200)
+  updateMySelection(
+    @Param('eventId') eventId: string,
+    @CurrentUser() user: JwtUser,
+    @Body() dto: UpdateMySelectionDto,
+  ): Promise<EventParticipantDto> {
+    return this.eventParticipantsService.updateMySelection(eventId, user.userId, dto);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get(':eventId/participants')
+  listParticipants(
+    @Param('eventId') eventId: string,
+    @CurrentUser() user: JwtUser,
+    @Query() query: ListEventParticipantsQueryDto,
+  ): Promise<EventParticipantsListResponseDto> {
+    return this.eventParticipantsService.listEventParticipantsForOrganiser(eventId, user.userId, query);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get(':eventId/participants/summary')
+  getParticipantsSummary(@Param('eventId') eventId: string, @CurrentUser() user: JwtUser): Promise<EventParticipantsSummaryDto> {
+    return this.eventParticipantsService.getParticipantsSummary(eventId, user.userId);
   }
 }
