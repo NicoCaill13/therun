@@ -72,4 +72,5 @@ export const clearEventsAndRoutes = async (prisma: PrismaService) => {
 export const clearAll = async (prisma: PrismaService) => {
   await clearEventsAndRoutes(prisma);
   await prisma.user.deleteMany();
+  await prisma.notification.deleteMany();
 };

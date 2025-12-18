@@ -45,6 +45,7 @@ enum RouteType {
 
 enum NotificationType {
   EVENT_REMINDER_PARTICIPANT
+  EVENT_REMINDER_ORGANISER
 }
 
 model User {
