@@ -7,6 +7,7 @@ import { RoutesModule } from './api/routes/routes.module';
 import { EventInvitesModule } from './api/event-invites/event-invites.module';
 import { MeModule } from './api/me/me.module';
 import { JoinModule } from './api/join/join.module';
+import { RemindersModule } from './api/reminders/reminders.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { JoinModule } from './api/join/join.module';
     EventInvitesModule,
     MeModule,
     JoinModule,
+    RemindersModule,
   ],
 })
 export class AppModule { }
