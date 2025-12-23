@@ -46,6 +46,10 @@ enum RouteType {
 enum NotificationType {
   EVENT_REMINDER_PARTICIPANT
   EVENT_REMINDER_ORGANISER
+  EVENT_BROADCAST
+  EVENT_CHANGED_TIME
+  EVENT_CHANGED_LOCATION
+  EVENT_CANCELLED
 }
 
 model User {
@@ -197,6 +201,10 @@ model Notification {
   body  String
   data  Json?
 
-  @@unique([userId, eventId, type])
+  readAt   DateTime?
+  dedupKey String?
+
+  @@unique([userId, dedupKey])
   @@index([userId, createdAt])
+  @@index([userId, readAt])
 }
