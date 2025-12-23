@@ -58,7 +58,7 @@ export class RemindersService {
       });
 
       if (participants.length === 0) continue;
-
+      const dedupKey = `event:${ev.id}:reminder:participant`;
       const rows = participants.map((p) => {
         const routeTxt = p.eventRoute ? `${p.eventRoute.name} (${p.eventRoute.distanceMeters}m)` : null;
         const groupTxt = p.eventGroup ? p.eventGroup.label : null;
@@ -83,6 +83,7 @@ export class RemindersService {
             eventRouteId: p.eventRouteId ?? null,
             eventGroupId: p.eventGroupId ?? null,
           },
+          dedupKey,
         };
       });
 
@@ -175,6 +176,7 @@ export class RemindersService {
         .filter(Boolean)
         .join(' • ');
 
+      const dedupKey = `event:${ev.id}:reminder:organiser`;
       const res = await this.prisma.notification.createMany({
         data: [
           {
@@ -191,6 +193,7 @@ export class RemindersService {
               byRoute,
               byGroup,
             },
+            dedupKey,
           },
         ],
         skipDuplicates: true,
