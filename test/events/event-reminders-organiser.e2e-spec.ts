@@ -33,7 +33,7 @@ describe('S4.3.2 – Organiser reminder with summary (e2e)', () => {
       data: {
         organiserId: organiser.id,
         title: 'Sortie soir',
-        startDateTime: new Date('2030-01-01T13:05:00.000Z'), // ✅ now + 185min => dans fenêtre H-3 (180..190)
+        startDateTime: new Date('2030-01-01T13:05:00.000Z'),
         status: EventStatus.PLANNED,
         eventCode: 'ORG001',
         locationName: 'Parc',
