@@ -106,7 +106,10 @@ export class RemindersService {
     const startMax = addMinutes(now, ORGANISER_OFFSET_MINUTES + WINDOW_MINUTES);
 
     const events = await this.prisma.event.findMany({
-      where: { startDateTime: { gte: startMin, lt: startMax } },
+      where: {
+        startDateTime: { gte: startMin, lt: startMax },
+        status: { notIn: [EventStatus.CANCELLED, EventStatus.COMPLETED] },
+      },
       select: {
         id: true,
         title: true,
