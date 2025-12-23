@@ -3,10 +3,18 @@ import { PrismaService } from '@/infrastructure/db/prisma.service';
 import { EventParticipantStatus } from '@prisma/client';
 import { MeInvitationsQueryDto } from './dto/me-invitations-query.dto';
 import { MeInvitationsResponseDto } from './dto/me-invitations-response.dto';
+import { JwtUser } from '@/types/jwt';
+import { NotificationsService } from '@/api/notifications/notifications.service';
+import { ListMyNotificationsQueryDto } from '../notifications/dto/list-my-notifications-query.dto';
+import { MyNotificationsResponseDto } from '../notifications/dto/my-notifications-response.dto';
+import { NotificationDto } from '../notifications/dto/notification.dto';
 
 @Injectable()
 export class MeService {
-  constructor(private readonly prisma: PrismaService) { }
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notificationsService: NotificationsService,
+  ) { }
 
   async listInvitations(userId: string, q: MeInvitationsQueryDto): Promise<MeInvitationsResponseDto> {
     const page = q.page ?? 1;
@@ -58,5 +66,13 @@ export class MeService {
       totalCount,
       totalPages,
     };
+  }
+
+  listMyNotifications(user: JwtUser, query: ListMyNotificationsQueryDto): Promise<MyNotificationsResponseDto> {
+    return this.notificationsService.listForUser(user.userId, query);
+  }
+
+  markNotificationAsRead(user: JwtUser, notificationId: string): Promise<NotificationDto> {
+    return this.notificationsService.markAsRead(user.userId, notificationId);
   }
 }
