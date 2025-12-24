@@ -1,7 +1,7 @@
 // src/events/events.service.ts
 import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '@/infrastructure/db/prisma.service';
-import { EventParticipantStatus, EventStatus, RoleInEvent, User, UserPlan } from '@prisma/client';
+import { EventParticipantStatus, EventStatus, NotificationType, RoleInEvent, User, UserPlan } from '@prisma/client';
 import { CreateEventDto } from './dto/create-event.dto';
 import { UserService } from '../users/user.service';
 import { EventParticipantsService } from '../event-participants/event-participants.service';
@@ -10,6 +10,22 @@ import { CurrentUserParticipationResponseDto, EventParticipantDto } from '../eve
 import { SimpleUserResponseDto } from '../users/dto/simple-user.dto';
 import { plainToInstance } from 'class-transformer';
 import { UpdateParticipantRoleDto } from '../event-participants/dto/update-participant-role.dto';
+import { NotificationsService } from '../notifications/notifications.service';
+import { UpdateEventDto } from './dto/update-event.dto';
+
+function iso(d: Date | null | undefined) {
+  return d ? d.toISOString() : null;
+}
+
+function locationSignature(e: {
+  locationName: string | null;
+  locationAddress: string | null;
+  locationLat: number | null;
+  locationLng: number | null;
+}) {
+  // on considère le lieu “critique” dès qu’un de ces champs change
+  return `${e.locationName ?? ''}|${e.locationAddress ?? ''}|${e.locationLat ?? ''}|${e.locationLng ?? ''}`;
+}
 
 @Injectable()
 export class EventsService {
@@ -17,6 +33,7 @@ export class EventsService {
     private readonly prisma: PrismaService,
     private readonly userService: UserService,
     private readonly eventParticipantService: EventParticipantsService,
+    private readonly notificationsService: NotificationsService,
   ) { }
 
   // petit générateur de code évenement lisible
@@ -314,5 +331,163 @@ export class EventsService {
 
     // 5. On renvoie le même payload que GET /events/:eventId
     return this.getEventDetails(eventId, currentUserId);
+  }
+
+  async updateEvent(eventId: string, currentUserId: string, dto: UpdateEventDto) {
+    const before = await this.prisma.event.findUnique({
+      where: { id: eventId },
+      select: {
+        id: true,
+        title: true,
+        organiserId: true,
+        startDateTime: true,
+        status: true,
+        locationName: true,
+        locationAddress: true,
+        locationLat: true,
+        locationLng: true,
+      },
+    });
+
+    if (!before) throw new NotFoundException('Event not found');
+    if (before.organiserId !== currentUserId) throw new ForbiddenException('Only organiser can update this event');
+
+    const startDateTime = dto.startDateTime ? new Date(dto.startDateTime) : undefined;
+
+    const after = await this.prisma.event.update({
+      where: { id: eventId },
+      data: {
+        startDateTime,
+        locationName: dto.locationName,
+        locationAddress: dto.locationAddress,
+        locationLat: dto.locationLat,
+        locationLng: dto.locationLng,
+        status: dto.status,
+      },
+      select: {
+        id: true,
+        title: true,
+        organiserId: true,
+        startDateTime: true,
+        status: true,
+        locationName: true,
+        locationAddress: true,
+        locationLat: true,
+        locationLng: true,
+      },
+    });
+
+    // --- détecter changements critiques
+    const timeChanged = dto.startDateTime !== undefined && before.startDateTime.toISOString() !== after.startDateTime.toISOString();
+
+    const locChanged =
+      (dto.locationName !== undefined ||
+        dto.locationAddress !== undefined ||
+        dto.locationLat !== undefined ||
+        dto.locationLng !== undefined) &&
+      locationSignature(before) !== locationSignature(after);
+
+    const cancelled = dto.status !== undefined && before.status !== EventStatus.CANCELLED && after.status === EventStatus.CANCELLED;
+
+    if (timeChanged || locChanged || cancelled) {
+      // participants concernés : GOING ou INVITED (pas MAYBE, pas DECLINED)
+      const targets = await this.prisma.eventParticipant.findMany({
+        where: {
+          eventId,
+          status: { in: [EventParticipantStatus.GOING, EventParticipantStatus.INVITED] },
+          userId: { not: null },
+        },
+        select: { id: true, userId: true, status: true },
+      });
+
+      if (targets.length > 0) {
+        const { type, title, body, data } = this.buildCriticalChangeNotification(before, after, {
+          timeChanged,
+          locChanged,
+          cancelled,
+        });
+
+        const rows = targets.map((p) => ({
+          userId: p.userId!,
+          eventId,
+          type,
+          title,
+          body,
+          data: {
+            ...data,
+            eventId,
+            participantId: p.id,
+            participantStatus: p.status,
+          },
+        }));
+
+        await this.notificationsService.createMany(rows);
+      }
+    }
+
+    return after; // ou ton EventDetailsResponseDto, selon ton API
+  }
+
+  private buildCriticalChangeNotification(
+    before: any,
+    after: any,
+    flags: { timeChanged: boolean; locChanged: boolean; cancelled: boolean },
+  ): { type: NotificationType; title: string; body: string; data: any } {
+    const title = `Mise à jour – ${after.title}`;
+
+    if (flags.cancelled) {
+      return {
+        type: NotificationType.EVENT_CANCELLED,
+        title: `Annulation – ${after.title}`,
+        body: `L’événement a été annulé. • Voir les détails`,
+        data: { reason: 'CANCELLED', beforeStatus: before.status, afterStatus: after.status },
+      };
+    }
+
+    if (flags.timeChanged && !flags.locChanged) {
+      return {
+        type: NotificationType.EVENT_CHANGED_TIME,
+        title,
+        body: `Changement d’horaire : initialement ${iso(before.startDateTime)} • nouvelle heure ${iso(after.startDateTime)} • Voir les détails`,
+        data: { beforeStartDateTime: iso(before.startDateTime), afterStartDateTime: iso(after.startDateTime) },
+      };
+    }
+
+    if (!flags.timeChanged && flags.locChanged) {
+      return {
+        type: NotificationType.EVENT_CHANGED_LOCATION,
+        title,
+        body:
+          `Changement de lieu : initialement ${before.locationName ?? '—'} • ` +
+          `nouveau lieu ${after.locationName ?? '—'} • Voir les détails`,
+        data: {
+          beforeLocation: {
+            locationName: before.locationName,
+            locationAddress: before.locationAddress,
+            locationLat: before.locationLat,
+            locationLng: before.locationLng,
+          },
+          afterLocation: {
+            locationName: after.locationName,
+            locationAddress: after.locationAddress,
+            locationLat: after.locationLat,
+            locationLng: after.locationLng,
+          },
+        },
+      };
+    }
+
+    // Plusieurs changements → simplification
+    return {
+      type: NotificationType.EVENT_UPDATED,
+      title,
+      body: `L’événement a été mis à jour (heure/lieu). • Voir les détails`,
+      data: {
+        timeChanged: flags.timeChanged,
+        locChanged: flags.locChanged,
+        before: { startDateTime: iso(before.startDateTime), locationName: before.locationName },
+        after: { startDateTime: iso(after.startDateTime), locationName: after.locationName },
+      },
+    };
   }
 }

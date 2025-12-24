@@ -33,6 +33,7 @@ import { EventParticipantsListResponseDto } from '../event-participants/dto/even
 import { EventParticipantsSummaryDto } from '../event-participants/dto/event-participants-summary.dto';
 import { BroadcastEventDto } from './dto/broadcast-event.dto';
 import { BroadcastEventResponseDto } from './dto/broadcast-event-response.dto';
+import { UpdateEventDto } from './dto/update-event.dto';
 
 @ApiTags('Events')
 @ApiBearerAuth()
@@ -55,6 +56,39 @@ export class EventsController {
   @Get(':eventId')
   async findOne(@CurrentUser() user: JwtUser, @Param('eventId') eventId: string): Promise<EventDetailsResponseDto> {
     return this.eventsService.getEventDetails(eventId, user.userId);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Patch(':eventId')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'Modifier un événement',
+    description:
+      'Si l’organisateur modifie un champ critique (heure/lieu/annulation), ' +
+      'le backend crée automatiquement des notifications pour les participants (GOING + INVITED).',
+  })
+  @ApiOkResponse({
+    description: 'Event mis à jour (et notifications potentiellement générées)',
+    // mets ton dto de réponse si tu en as un, sinon laisse vide
+  })
+  @ApiBadRequestResponse({
+    description: 'Payload invalide (class-validator)',
+    schema: { example: { statusCode: 400, error: 'Bad Request', message: ['startDateTime must be a valid ISO 8601 date string'] } },
+  })
+  @ApiUnauthorizedResponse({
+    description: 'Non authentifié',
+    schema: { example: { statusCode: 401, message: 'Unauthorized' } },
+  })
+  @ApiForbiddenResponse({
+    description: 'Seul l’organisateur peut modifier l’événement',
+    schema: { example: { statusCode: 403, error: 'Forbidden', message: 'Only organiser can update this event' } },
+  })
+  @ApiNotFoundResponse({
+    description: 'Event introuvable',
+    schema: { example: { statusCode: 404, error: 'Not Found', message: 'Event not found' } },
+  })
+  async updateEvent(@Param('eventId') eventId: string, @CurrentUser() user: JwtUser, @Body() dto: UpdateEventDto) {
+    return this.eventsService.updateEvent(eventId, user.userId, dto);
   }
 
   @UseGuards(JwtAuthGuard)

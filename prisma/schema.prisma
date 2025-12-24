@@ -50,6 +50,7 @@ enum NotificationType {
   EVENT_CHANGED_TIME
   EVENT_CHANGED_LOCATION
   EVENT_CANCELLED
+  EVENT_UPDATED
 }
 
 model User {
