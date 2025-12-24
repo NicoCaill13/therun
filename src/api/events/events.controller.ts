@@ -1,6 +1,15 @@
 // src/events/events.controller.ts
 import { Controller, Get, Post, Body, Patch, Param, UseGuards, HttpCode, Query } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBadRequestResponse,
+  ApiBearerAuth,
+  ApiForbiddenResponse,
+  ApiNotFoundResponse,
+  ApiOkResponse,
+  ApiOperation,
+  ApiTags,
+  ApiUnauthorizedResponse,
+} from '@nestjs/swagger';
 import { EventsService } from './events.service';
 import { CreateEventDto } from './dto/create-event.dto';
 import { JwtAuthGuard } from '@/infrastructure/auth/jwt-auth.guard';
@@ -22,6 +31,8 @@ import { UpdateMySelectionDto } from '../event-participants/dto/update-my-select
 import { ListEventParticipantsQueryDto } from '../event-participants/dto/list-event-participants-query.dto';
 import { EventParticipantsListResponseDto } from '../event-participants/dto/event-participants-list.dto';
 import { EventParticipantsSummaryDto } from '../event-participants/dto/event-participants-summary.dto';
+import { BroadcastEventDto } from './dto/broadcast-event.dto';
+import { BroadcastEventResponseDto } from './dto/broadcast-event-response.dto';
 
 @ApiTags('Events')
 @ApiBearerAuth()
@@ -44,6 +55,66 @@ export class EventsController {
   @Get(':eventId')
   async findOne(@CurrentUser() user: JwtUser, @Param('eventId') eventId: string): Promise<EventDetailsResponseDto> {
     return this.eventsService.getEventDetails(eventId, user.userId);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post(':eventId/broadcast')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'Broadcast un message aux participants de l’événement',
+    description:
+      'Envoie une notification `EVENT_BROADCAST` à tous les participants de l’event (hors `DECLINED`). ' +
+      'N’envoie rien aux participants sans `userId` (guests).',
+  })
+  @ApiOkResponse({
+    description: 'Broadcast envoyé',
+    type: BroadcastEventResponseDto,
+    schema: {
+      example: { sentCount: 4 },
+    },
+  })
+  @ApiBadRequestResponse({
+    description: 'Payload invalide (DTO class-validator)',
+    schema: {
+      example: {
+        statusCode: 400,
+        error: 'Bad Request',
+        message: ['body should not be empty'],
+      },
+    },
+  })
+  @ApiUnauthorizedResponse({
+    description: 'Non authentifié (token manquant/invalide)',
+    schema: {
+      example: { statusCode: 401, message: 'Unauthorized' },
+    },
+  })
+  @ApiForbiddenResponse({
+    description: 'Accès refusé (seul l’organisateur peut broadcaster)',
+    schema: {
+      example: {
+        statusCode: 403,
+        error: 'Forbidden',
+        message: 'Only organiser can broadcast to participants',
+      },
+    },
+  })
+  @ApiNotFoundResponse({
+    description: 'Event introuvable',
+    schema: {
+      example: {
+        statusCode: 404,
+        error: 'Not Found',
+        message: 'Event not found',
+      },
+    },
+  })
+  broadcast(
+    @Param('eventId') eventId: string,
+    @CurrentUser() user: JwtUser,
+    @Body() dto: BroadcastEventDto,
+  ): Promise<BroadcastEventResponseDto> {
+    return this.eventParticipantsService.broadcastToParticipants(eventId, user.userId, dto);
   }
 
   @UseGuards(JwtAuthGuard)
