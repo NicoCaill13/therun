@@ -5,9 +5,10 @@ import { PrismaService } from '@/infrastructure/db/prisma.service';
 import { UsersModule } from '@/api/users/users.module';
 import { EventParticipantsModule } from '@/api/event-participants/event-participants.module';
 import { EventRoutesModule } from '../event-routes/event-routes.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
-  imports: [UsersModule, EventParticipantsModule, EventRoutesModule],
+  imports: [UsersModule, EventParticipantsModule, EventRoutesModule, NotificationsModule],
   controllers: [EventsController],
   providers: [EventsService, PrismaService],
   exports: [EventsService],
