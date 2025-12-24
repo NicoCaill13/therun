@@ -12,6 +12,7 @@ import { plainToInstance } from 'class-transformer';
 import { UpdateParticipantRoleDto } from '../event-participants/dto/update-participant-role.dto';
 import { NotificationsService } from '../notifications/notifications.service';
 import { UpdateEventDto } from './dto/update-event.dto';
+import { randomInt } from 'crypto';
 
 function iso(d: Date | null | undefined) {
   return d ? d.toISOString() : null;
@@ -27,6 +28,8 @@ function locationSignature(e: {
   return `${e.locationName ?? ''}|${e.locationAddress ?? ''}|${e.locationLat ?? ''}|${e.locationLng ?? ''}`;
 }
 
+const EVENT_CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+
 @Injectable()
 export class EventsService {
   constructor(
@@ -37,25 +40,31 @@ export class EventsService {
   ) { }
 
   // petit générateur de code évenement lisible
-  private generateEventCode(): string {
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // évite 0/O/I confus
+  private generateEventCode(codeLength?: number): string {
+    // crypto.randomInt(min, max) => max EXCLUSIF, donc 5..8 via 5..9
+    const len = codeLength ?? randomInt(5, 9);
+
     let code = '';
-    for (let i = 0; i < 6; i++) {
-      code += chars.charAt(Math.floor(Math.random() * chars.length));
+    for (let i = 0; i < len; i++) {
+      code += EVENT_CODE_ALPHABET[randomInt(0, EVENT_CODE_ALPHABET.length)];
     }
     return code;
   }
 
   private async generateUniqueEventCode(): Promise<string> {
-    // simple boucle de sécurité (probabilité de collision très faible)
-    for (; ;) {
+    // MVP: retry silencieux
+    for (let attempt = 0; attempt < 10; attempt++) {
       const code = this.generateEventCode();
+
       const existing = await this.prisma.event.findUnique({
         where: { eventCode: code },
         select: { id: true },
       });
+
       if (!existing) return code;
     }
+
+    throw new BadRequestException('Unable to generate unique eventCode');
   }
 
   /**

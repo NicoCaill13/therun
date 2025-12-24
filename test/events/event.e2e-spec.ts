@@ -72,7 +72,9 @@ describe('EventsController – POST /events (e2e)', () => {
       expect(body.title).toBe(payload.title);
       expect(body.status).toBe(EventStatus.PLANNED);
       expect(typeof body.eventCode).toBe('string');
-      expect(body.eventCode).toHaveLength(6);
+      expect(body.eventCode.length).toBeGreaterThanOrEqual(5);
+      expect(body.eventCode.length).toBeLessThanOrEqual(8);
+      expect(body.eventCode).toMatch(/^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{5,8}$/);
 
       expect(typeof body.startDateTime).toBe('string');
       expect(new Date(body.startDateTime).toISOString()).toBe(body.startDateTime);
@@ -217,7 +219,9 @@ describe('EventsController – Get /events (e2e)', () => {
       expect(body.event.locationLng).toBe(payload.locationLng);
 
       expect(typeof body.event.eventCode).toBe('string');
-      expect(body.event.eventCode).toHaveLength(6);
+      expect(body.event.eventCode.length).toBeGreaterThanOrEqual(5);
+      expect(body.event.eventCode.length).toBeLessThanOrEqual(8);
+      expect(body.event.eventCode).toMatch(/^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{5,8}$/);
 
       // --- Bloc organiser ---
       expect(body.organiser).toBeDefined();

@@ -9,6 +9,7 @@ import {
   ApiOperation,
   ApiTags,
   ApiUnauthorizedResponse,
+  ApiCreatedResponse,
 } from '@nestjs/swagger';
 import { EventsService } from './events.service';
 import { CreateEventDto } from './dto/create-event.dto';
@@ -47,7 +48,10 @@ export class EventsController {
 
   @UseGuards(JwtAuthGuard)
   @Post()
-  @ApiOperation({ summary: 'Créer un événement (MVP-1)' })
+  @ApiOperation({ summary: 'Créer un événement (eventCode auto-généré)' })
+  @ApiCreatedResponse({ description: 'Event créé (eventCode auto-généré, unique)' })
+  @ApiUnauthorizedResponse({ description: 'Unauthorized' })
+  @ApiBadRequestResponse({ description: 'Bad Request (validation / génération eventCode impossible)' })
   async create(@CurrentUser() user: JwtUser, @Body() dto: CreateEventDto) {
     return this.eventsService.createForOrganiser(user.userId, dto);
   }
