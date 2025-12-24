@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '@/infrastructure/db/prisma.service';
-import { EventParticipantStatus, RoleInEvent } from '@prisma/client';
+import { EventParticipantStatus, NotificationType, RoleInEvent } from '@prisma/client';
 import { InviteParticipantResponseDto } from './dto/invite-participant-response.dto';
 import { InviteParticipantDto } from './dto/invite-participant.dto';
 import { RespondInvitationDto } from './dto/respond-invitation.dto';
@@ -11,10 +11,16 @@ import { UpdateMySelectionDto } from './dto/update-my-selection.dto';
 import { ListEventParticipantsQueryDto } from './dto/list-event-participants-query.dto';
 import { EventParticipantsListResponseDto } from './dto/event-participants-list.dto';
 import { EventParticipantsSummaryDto } from './dto/event-participants-summary.dto';
+import { NotificationsService } from '../notifications/notifications.service';
+import { BroadcastEventDto } from '../events/dto/broadcast-event.dto';
+import { BroadcastEventResponseDto } from '../events/dto/broadcast-event-response.dto';
 
 @Injectable()
 export class EventParticipantsService {
-  constructor(private readonly prisma: PrismaService) { }
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notificationsService: NotificationsService,
+  ) { }
 
   async createOrganiserParticipant(eventId: string, userId: string) {
     return this.prisma.eventParticipant.create({
@@ -405,7 +411,6 @@ export class EventParticipantsService {
       };
     });
 
-    // répartition par groupes (GOING uniquement)
     const groups = await this.prisma.eventGroup.findMany({
       where: { eventRoute: { eventId } },
       select: { id: true, label: true },
@@ -428,5 +433,49 @@ export class EventParticipantsService {
     });
 
     return { goingCount, invitedCount, maybeCount, byRoute, byGroup };
+  }
+
+  async broadcastToParticipants(eventId: string, currentUserId: string, dto: BroadcastEventDto): Promise<BroadcastEventResponseDto> {
+    const event = await this.prisma.event.findUnique({
+      where: { id: eventId },
+      select: { id: true, organiserId: true },
+    });
+
+    if (!event) throw new NotFoundException('Event not found');
+    if (event.organiserId !== currentUserId) {
+      throw new ForbiddenException('Only organiser can broadcast to participants');
+    }
+
+    const participants = await this.prisma.eventParticipant.findMany({
+      where: {
+        eventId,
+        status: { not: EventParticipantStatus.DECLINED },
+        userId: { not: null }, // sécurité: Notification.userId est required
+      },
+      select: { id: true, userId: true },
+    });
+
+    if (participants.length === 0) return { sentCount: 0 };
+
+    const title = dto.title?.trim() ? dto.title.trim() : 'Message de l’organisateur';
+    const body = dto.body;
+
+    const rows = participants.map((p) => ({
+      userId: p.userId!,
+      eventId,
+      type: NotificationType.EVENT_BROADCAST,
+      title,
+      body,
+      data: {
+        eventId,
+        participantId: p.id,
+        fromUserId: currentUserId,
+      },
+      dedupKey: `event:${eventId}:broadcast:${Date.now()}:${p.id}`,
+    }));
+
+    const res = await this.notificationsService.createMany(rows);
+
+    return { sentCount: res.createdCount };
   }
 }

@@ -22,6 +22,8 @@ import { UpdateMySelectionDto } from '../event-participants/dto/update-my-select
 import { ListEventParticipantsQueryDto } from '../event-participants/dto/list-event-participants-query.dto';
 import { EventParticipantsListResponseDto } from '../event-participants/dto/event-participants-list.dto';
 import { EventParticipantsSummaryDto } from '../event-participants/dto/event-participants-summary.dto';
+import { BroadcastEventDto } from './dto/broadcast-event.dto';
+import { BroadcastEventResponseDto } from './dto/broadcast-event-response.dto';
 
 @ApiTags('Events')
 @ApiBearerAuth()
@@ -44,6 +46,17 @@ export class EventsController {
   @Get(':eventId')
   async findOne(@CurrentUser() user: JwtUser, @Param('eventId') eventId: string): Promise<EventDetailsResponseDto> {
     return this.eventsService.getEventDetails(eventId, user.userId);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post(':eventId/broadcast')
+  @HttpCode(200)
+  broadcast(
+    @Param('eventId') eventId: string,
+    @CurrentUser() user: JwtUser,
+    @Body() dto: BroadcastEventDto,
+  ): Promise<BroadcastEventResponseDto> {
+    return this.eventParticipantsService.broadcastToParticipants(eventId, user.userId, dto);
   }
 
   @UseGuards(JwtAuthGuard)
