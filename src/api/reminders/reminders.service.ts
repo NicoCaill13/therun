@@ -1,7 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '@/infrastructure/db/prisma.service';
-import { EventParticipantStatus, NotificationType } from '@prisma/client';
+import { EventParticipantStatus, EventStatus, NotificationType } from '@prisma/client';
+import { NotificationsService } from '../notifications/notifications.service';
 
 const OFFSET_MINUTES = 120;
 const ORGANISER_OFFSET_MINUTES = 180;
@@ -15,7 +16,10 @@ function addMinutes(d: Date, minutes: number) {
 export class RemindersService {
   private readonly logger = new Logger(RemindersService.name);
 
-  constructor(private readonly prisma: PrismaService) { }
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notificationsService: NotificationsService,
+  ) { }
 
   @Cron('*/10 * * * *')
   async handleCron() {
@@ -32,6 +36,7 @@ export class RemindersService {
     const events = await this.prisma.event.findMany({
       where: {
         startDateTime: { gte: startMin, lt: startMax },
+        status: { notIn: [EventStatus.CANCELLED, EventStatus.COMPLETED] },
       },
       select: {
         id: true,
@@ -59,6 +64,7 @@ export class RemindersService {
 
       if (participants.length === 0) continue;
 
+      const dedupKey = `event:${ev.id}:reminder:participant`;
       const rows = participants.map((p) => {
         const routeTxt = p.eventRoute ? `${p.eventRoute.name} (${p.eventRoute.distanceMeters}m)` : null;
         const groupTxt = p.eventGroup ? p.eventGroup.label : null;
@@ -83,15 +89,12 @@ export class RemindersService {
             eventRouteId: p.eventRouteId ?? null,
             eventGroupId: p.eventGroupId ?? null,
           },
+          dedupKey,
         };
       });
 
-      const res = await this.prisma.notification.createMany({
-        data: rows,
-        skipDuplicates: true, // ✅ respecte @@unique = idempotent
-      });
-
-      created += res.count;
+      const res = await this.notificationsService.createMany(rows);
+      created += res.createdCount;
     }
 
     this.logger.log(`Participant reminders created: ${created}`);
@@ -103,7 +106,10 @@ export class RemindersService {
     const startMax = addMinutes(now, ORGANISER_OFFSET_MINUTES + WINDOW_MINUTES);
 
     const events = await this.prisma.event.findMany({
-      where: { startDateTime: { gte: startMin, lt: startMax } },
+      where: {
+        startDateTime: { gte: startMin, lt: startMax },
+        status: { notIn: [EventStatus.CANCELLED, EventStatus.COMPLETED] },
+      },
       select: {
         id: true,
         title: true,
@@ -175,28 +181,27 @@ export class RemindersService {
         .filter(Boolean)
         .join(' • ');
 
-      const res = await this.prisma.notification.createMany({
-        data: [
-          {
-            userId: ev.organiserId,
+      const dedupKey = `event:${ev.id}:reminder:organiser`;
+      const res = await this.notificationsService.createMany([
+        {
+          userId: ev.organiserId,
+          eventId: ev.id,
+          type: NotificationType.EVENT_REMINDER_ORGANISER,
+          title,
+          body,
+          data: {
             eventId: ev.id,
-            type: NotificationType.EVENT_REMINDER_ORGANISER,
-            title,
-            body,
-            data: {
-              eventId: ev.id,
-              goingCount,
-              invitedCount,
-              maybeCount,
-              byRoute,
-              byGroup,
-            },
+            goingCount,
+            invitedCount,
+            maybeCount,
+            byRoute,
+            byGroup,
           },
-        ],
-        skipDuplicates: true,
-      });
+          dedupKey,
+        },
+      ]);
 
-      created += res.count;
+      created += res.createdCount;
     }
 
     this.logger.log(`Organiser reminders created: ${created}`);

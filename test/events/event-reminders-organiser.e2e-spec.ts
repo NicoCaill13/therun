@@ -4,7 +4,7 @@ import { clearAll, createE2eApp, seedUser } from '../e2e-utils';
 import { EventParticipantStatus, EventStatus, RoleInEvent, UserPlan, NotificationType, RouteType } from '@prisma/client';
 import { RemindersService } from '@/api/reminders/reminders.service';
 
-describe('S4.3.2 – Organiser reminder with summary (e2e)', () => {
+describe('S5.2.2 – Organiser reminder with summary (e2e)', () => {
   let app: INestApplication;
   let prisma: PrismaService;
   let reminders: RemindersService;
@@ -22,32 +22,68 @@ describe('S4.3.2 – Organiser reminder with summary (e2e)', () => {
     await app.close();
   });
 
-  it('crée 1 rappel organisateur à H-3 si goingCount>=1, avec distribution, et idempotent', async () => {
+  it('crée 1 rappel organisateur à H-3 si goingCount>=1, avec distribution, ignore CANCELLED/COMPLETED, et idempotent', async () => {
     const now = new Date('2030-01-01T10:00:00.000Z');
 
     const organiser = await seedUser(prisma, UserPlan.FREE, { firstName: 'Org' });
     const uGoingA = await seedUser(prisma, UserPlan.FREE, { firstName: 'A' });
     const uInv = await seedUser(prisma, UserPlan.FREE, { firstName: 'Inv' });
 
+    // Event PLANNED dans la fenêtre H-3 => DOIT créer
     const event = await prisma.event.create({
       data: {
         organiserId: organiser.id,
         title: 'Sortie soir',
-        startDateTime: new Date('2030-01-01T13:05:00.000Z'), // ✅ now + 185min => dans fenêtre H-3 (180..190)
+        startDateTime: new Date('2030-01-01T13:05:00.000Z'),
         status: EventStatus.PLANNED,
         eventCode: 'ORG001',
         locationName: 'Parc',
+        locationAddress: 'Rue X',
       },
     });
 
+    // Events CANCELLED/COMPLETED dans la même fenêtre => DOIVENT être ignorés
+    const cancelledEvent = await prisma.event.create({
+      data: {
+        organiserId: organiser.id,
+        title: 'Annulée',
+        startDateTime: new Date('2030-01-01T13:06:00.000Z'),
+        status: EventStatus.CANCELLED,
+        eventCode: 'ORG_CAN_001',
+        locationName: 'Parc',
+        locationAddress: 'Rue X',
+      },
+    });
+
+    const completedEvent = await prisma.event.create({
+      data: {
+        organiserId: organiser.id,
+        title: 'Terminée',
+        startDateTime: new Date('2030-01-01T13:07:00.000Z'),
+        status: EventStatus.COMPLETED,
+        eventCode: 'ORG_COM_001',
+        locationName: 'Parc',
+        locationAddress: 'Rue X',
+      },
+    });
+
+    // Route + Group (distribution)
     const routeA = await prisma.eventRoute.create({
-      data: { eventId: event.id, routeId: null, name: '8k', distanceMeters: 8000, type: RouteType.ROUTE, encodedPolyline: 'poly' },
+      data: {
+        eventId: event.id,
+        routeId: null,
+        name: '8k',
+        distanceMeters: 8000,
+        type: RouteType.ROUTE,
+        encodedPolyline: 'poly',
+      },
     });
 
     const groupA = await prisma.eventGroup.create({
       data: { eventRouteId: routeA.id, label: '10-11' },
     });
 
+    // Participants pour event PLANNED
     await prisma.eventParticipant.createMany({
       data: [
         { eventId: event.id, userId: organiser.id, role: RoleInEvent.ORGANISER, status: EventParticipantStatus.GOING },
@@ -63,6 +99,16 @@ describe('S4.3.2 – Organiser reminder with summary (e2e)', () => {
       ],
     });
 
+    // Participants pour CANCELLED/COMPLETED (GOING) => si le filtre status manque, ça créerait des notifs
+    await prisma.eventParticipant.createMany({
+      data: [
+        { eventId: cancelledEvent.id, userId: organiser.id, role: RoleInEvent.ORGANISER, status: EventParticipantStatus.GOING },
+        { eventId: cancelledEvent.id, userId: uGoingA.id, role: RoleInEvent.PARTICIPANT, status: EventParticipantStatus.GOING },
+        { eventId: completedEvent.id, userId: organiser.id, role: RoleInEvent.ORGANISER, status: EventParticipantStatus.GOING },
+        { eventId: completedEvent.id, userId: uGoingA.id, role: RoleInEvent.PARTICIPANT, status: EventParticipantStatus.GOING },
+      ],
+    });
+
     // Run #1
     const r1 = await reminders.runOrganiserReminders(now);
     expect(r1.created).toBe(1);
@@ -71,6 +117,9 @@ describe('S4.3.2 – Organiser reminder with summary (e2e)', () => {
       where: { eventId: event.id, type: NotificationType.EVENT_REMINDER_ORGANISER, userId: organiser.id },
     });
     expect(notif).toBeTruthy();
+
+    // ✅ dedupKey (idempotence)
+    expect(notif!.dedupKey).toBe(`event:${event.id}:reminder:organiser`);
 
     const data: any = notif!.data;
     expect(data.goingCount).toBe(2);
@@ -85,9 +134,23 @@ describe('S4.3.2 – Organiser reminder with summary (e2e)', () => {
     const bg = data.byGroup.find((x: any) => x.eventGroupId === groupA.id);
     expect(bg.goingCount).toBe(1);
 
+    // ✅ ignore CANCELLED/COMPLETED
+    const ignoredCount = await prisma.notification.count({
+      where: {
+        type: NotificationType.EVENT_REMINDER_ORGANISER,
+        eventId: { in: [cancelledEvent.id, completedEvent.id] },
+      },
+    });
+    expect(ignoredCount).toBe(0);
+
     // Run #2 idempotence
     const r2 = await reminders.runOrganiserReminders(now);
     expect(r2.created).toBe(0);
+
+    const countAfter = await prisma.notification.count({
+      where: { eventId: event.id, type: NotificationType.EVENT_REMINDER_ORGANISER, userId: organiser.id },
+    });
+    expect(countAfter).toBe(1);
   });
 
   it("n'envoie pas si goingCount < 1", async () => {
