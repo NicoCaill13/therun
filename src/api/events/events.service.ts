@@ -13,6 +13,7 @@ import { UpdateParticipantRoleDto } from '../event-participants/dto/update-parti
 import { NotificationsService } from '../notifications/notifications.service';
 import { UpdateEventDto } from './dto/update-event.dto';
 import { randomInt } from 'crypto';
+import { PublicEventByCodeResponseDto } from './dto/public-event-by-code-response.dto';
 
 function iso(d: Date | null | undefined) {
   return d ? d.toISOString() : null;
@@ -496,6 +497,50 @@ export class EventsService {
         locChanged: flags.locChanged,
         before: { startDateTime: iso(before.startDateTime), locationName: before.locationName },
         after: { startDateTime: iso(after.startDateTime), locationName: after.locationName },
+      },
+    };
+  }
+
+  async getPublicByCode(eventCode: string): Promise<PublicEventByCodeResponseDto> {
+    const code = (eventCode ?? '').trim();
+    if (!code) throw new BadRequestException('eventCode is required');
+
+    const ev = await this.prisma.event.findUnique({
+      where: { eventCode: code },
+      select: {
+        id: true,
+        eventCode: true,
+        title: true,
+        startDateTime: true,
+        status: true,
+        locationName: true,
+        locationAddress: true,
+        organiser: { select: { firstName: true, lastName: true } },
+      },
+    });
+
+    if (!ev) throw new NotFoundException('Event not found');
+
+    if (ev.status === EventStatus.CANCELLED || ev.status === EventStatus.COMPLETED) {
+      // MVP : on masque l'event non disponible
+      throw new NotFoundException('Event not available');
+    }
+
+    return {
+      id: ev.id,
+      eventCode: ev.eventCode,
+      title: ev.title,
+      startDateTime: ev.startDateTime.toISOString(),
+      status: ev.status,
+      locationName: ev.locationName,
+      locationAddress: ev.locationAddress,
+      organiser: {
+        firstName: ev.organiser.firstName,
+        lastName: ev.organiser.lastName,
+      },
+      join: {
+        eventId: ev.id,
+        eventCode: ev.eventCode,
       },
     };
   }
