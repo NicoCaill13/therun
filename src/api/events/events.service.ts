@@ -14,6 +14,8 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { UpdateEventDto } from './dto/update-event.dto';
 import { randomInt } from 'crypto';
 import { PublicEventByCodeResponseDto } from './dto/public-event-by-code-response.dto';
+import { PublicGuestJoinDto } from './dto/public-guest-join.dto';
+import { PublicGuestJoinResponseDto } from './dto/public-guest-join-response.dto';
 
 function iso(d: Date | null | undefined) {
   return d ? d.toISOString() : null;
@@ -542,6 +544,96 @@ export class EventsService {
         eventId: ev.id,
         eventCode: ev.eventCode,
       },
+    };
+  }
+
+  async guestJoinPublic(eventId: string, dto: PublicGuestJoinDto): Promise<PublicGuestJoinResponseDto> {
+    const ev = await this.prisma.event.findUnique({
+      where: { id: eventId },
+      select: { id: true, status: true },
+    });
+
+    if (!ev) throw new NotFoundException('Event not found');
+
+    if (ev.status === EventStatus.CANCELLED || ev.status === EventStatus.COMPLETED) {
+      throw new BadRequestException('Event not joinable');
+    }
+
+    const email = dto.email?.trim().toLowerCase();
+
+    let user = null as null | { id: string; isGuest: boolean };
+
+    if (email) {
+      const existing = await this.prisma.user.findUnique({
+        where: { email },
+        select: { id: true, isGuest: true },
+      });
+
+      if (existing) {
+        user = existing;
+      } else {
+        user = await this.prisma.user.create({
+          data: {
+            email,
+            firstName: dto.firstName.trim(),
+            lastName: dto.lastName?.trim() ?? null,
+            isGuest: true,
+            plan: UserPlan.FREE,
+          },
+          select: { id: true, isGuest: true },
+        });
+      }
+    } else {
+      user = await this.prisma.user.create({
+        data: {
+          email: null,
+          firstName: dto.firstName.trim(),
+          lastName: dto.lastName?.trim() ?? null,
+          isGuest: true,
+          plan: UserPlan.FREE,
+        },
+        select: { id: true, isGuest: true },
+      });
+    }
+
+    const existingParticipant = await this.prisma.eventParticipant.findFirst({
+      where: { eventId: ev.id, userId: user.id },
+      select: { id: true },
+    });
+
+    if (existingParticipant) {
+      const updated = await this.prisma.eventParticipant.update({
+        where: { id: existingParticipant.id },
+        data: {
+          role: RoleInEvent.PARTICIPANT,
+          status: EventParticipantStatus.GOING,
+        },
+        select: { id: true },
+      });
+
+      return {
+        eventId: ev.id,
+        participantId: updated.id,
+        userId: user.id,
+        isGuest: user.isGuest,
+      };
+    }
+
+    const created = await this.prisma.eventParticipant.create({
+      data: {
+        eventId: ev.id,
+        userId: user.id,
+        role: RoleInEvent.PARTICIPANT,
+        status: EventParticipantStatus.GOING,
+      },
+      select: { id: true },
+    });
+
+    return {
+      eventId: ev.id,
+      participantId: created.id,
+      userId: user.id,
+      isGuest: user.isGuest,
     };
   }
 }
