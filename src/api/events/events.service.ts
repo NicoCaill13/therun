@@ -16,6 +16,8 @@ import { randomInt } from 'crypto';
 import { PublicEventByCodeResponseDto } from './dto/public-event-by-code-response.dto';
 import { PublicGuestJoinDto } from './dto/public-guest-join.dto';
 import { PublicGuestJoinResponseDto } from './dto/public-guest-join-response.dto';
+import { PublicGuestAuthDto } from './dto/public-guest-auth.dto';
+import { PublicGuestAuthResponseDto } from './dto/public-guest-auth-response.dto';
 
 function iso(d: Date | null | undefined) {
   return d ? d.toISOString() : null;
