@@ -12,6 +12,12 @@ import { plainToInstance } from 'class-transformer';
 import { UpdateParticipantRoleDto } from '../event-participants/dto/update-participant-role.dto';
 import { NotificationsService } from '../notifications/notifications.service';
 import { UpdateEventDto } from './dto/update-event.dto';
+import { randomInt } from 'crypto';
+import { PublicEventByCodeResponseDto } from './dto/public-event-by-code-response.dto';
+import { PublicGuestJoinDto } from './dto/public-guest-join.dto';
+import { PublicGuestJoinResponseDto } from './dto/public-guest-join-response.dto';
+import { PublicGuestAuthDto } from './dto/public-guest-auth.dto';
+import { PublicGuestAuthResponseDto } from './dto/public-guest-auth-response.dto';
 
 function iso(d: Date | null | undefined) {
   return d ? d.toISOString() : null;
@@ -27,6 +33,8 @@ function locationSignature(e: {
   return `${e.locationName ?? ''}|${e.locationAddress ?? ''}|${e.locationLat ?? ''}|${e.locationLng ?? ''}`;
 }
 
+const EVENT_CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+
 @Injectable()
 export class EventsService {
   constructor(
@@ -37,25 +45,31 @@ export class EventsService {
   ) { }
 
   // petit générateur de code évenement lisible
-  private generateEventCode(): string {
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // évite 0/O/I confus
+  private generateEventCode(codeLength?: number): string {
+    // crypto.randomInt(min, max) => max EXCLUSIF, donc 5..8 via 5..9
+    const len = codeLength ?? randomInt(5, 9);
+
     let code = '';
-    for (let i = 0; i < 6; i++) {
-      code += chars.charAt(Math.floor(Math.random() * chars.length));
+    for (let i = 0; i < len; i++) {
+      code += EVENT_CODE_ALPHABET[randomInt(0, EVENT_CODE_ALPHABET.length)];
     }
     return code;
   }
 
   private async generateUniqueEventCode(): Promise<string> {
-    // simple boucle de sécurité (probabilité de collision très faible)
-    for (; ;) {
+    // MVP: retry silencieux
+    for (let attempt = 0; attempt < 10; attempt++) {
       const code = this.generateEventCode();
+
       const existing = await this.prisma.event.findUnique({
         where: { eventCode: code },
         select: { id: true },
       });
+
       if (!existing) return code;
     }
+
+    throw new BadRequestException('Unable to generate unique eventCode');
   }
 
   /**
@@ -488,6 +502,140 @@ export class EventsService {
         before: { startDateTime: iso(before.startDateTime), locationName: before.locationName },
         after: { startDateTime: iso(after.startDateTime), locationName: after.locationName },
       },
+    };
+  }
+
+  async getPublicByCode(eventCode: string): Promise<PublicEventByCodeResponseDto> {
+    const code = (eventCode ?? '').trim();
+    if (!code) throw new BadRequestException('eventCode is required');
+
+    const ev = await this.prisma.event.findUnique({
+      where: { eventCode: code },
+      select: {
+        id: true,
+        eventCode: true,
+        title: true,
+        startDateTime: true,
+        status: true,
+        locationName: true,
+        locationAddress: true,
+        organiser: { select: { firstName: true, lastName: true } },
+      },
+    });
+
+    if (!ev) throw new NotFoundException('Event not found');
+
+    if (ev.status === EventStatus.CANCELLED || ev.status === EventStatus.COMPLETED) {
+      // MVP : on masque l'event non disponible
+      throw new NotFoundException('Event not available');
+    }
+
+    return {
+      id: ev.id,
+      eventCode: ev.eventCode,
+      title: ev.title,
+      startDateTime: ev.startDateTime.toISOString(),
+      status: ev.status,
+      locationName: ev.locationName,
+      locationAddress: ev.locationAddress,
+      organiser: {
+        firstName: ev.organiser.firstName,
+        lastName: ev.organiser.lastName,
+      },
+      join: {
+        eventId: ev.id,
+        eventCode: ev.eventCode,
+      },
+    };
+  }
+
+  async guestJoinPublic(eventId: string, dto: PublicGuestJoinDto): Promise<PublicGuestJoinResponseDto> {
+    const ev = await this.prisma.event.findUnique({
+      where: { id: eventId },
+      select: { id: true, status: true },
+    });
+
+    if (!ev) throw new NotFoundException('Event not found');
+
+    if (ev.status === EventStatus.CANCELLED || ev.status === EventStatus.COMPLETED) {
+      throw new BadRequestException('Event not joinable');
+    }
+
+    const email = dto.email?.trim().toLowerCase();
+
+    let user = null as null | { id: string; isGuest: boolean };
+
+    if (email) {
+      const existing = await this.prisma.user.findUnique({
+        where: { email },
+        select: { id: true, isGuest: true },
+      });
+
+      if (existing) {
+        user = existing;
+      } else {
+        user = await this.prisma.user.create({
+          data: {
+            email,
+            firstName: dto.firstName.trim(),
+            lastName: dto.lastName?.trim() ?? null,
+            isGuest: true,
+            plan: UserPlan.FREE,
+          },
+          select: { id: true, isGuest: true },
+        });
+      }
+    } else {
+      user = await this.prisma.user.create({
+        data: {
+          email: null,
+          firstName: dto.firstName.trim(),
+          lastName: dto.lastName?.trim() ?? null,
+          isGuest: true,
+          plan: UserPlan.FREE,
+        },
+        select: { id: true, isGuest: true },
+      });
+    }
+
+    const existingParticipant = await this.prisma.eventParticipant.findFirst({
+      where: { eventId: ev.id, userId: user.id },
+      select: { id: true },
+    });
+
+    if (existingParticipant) {
+      const updated = await this.prisma.eventParticipant.update({
+        where: { id: existingParticipant.id },
+        data: {
+          role: RoleInEvent.PARTICIPANT,
+          status: EventParticipantStatus.GOING,
+        },
+        select: { id: true },
+      });
+
+      return {
+        eventId: ev.id,
+        participantId: updated.id,
+        userId: user.id,
+        isGuest: user.isGuest,
+      };
+    }
+
+    const created = await this.prisma.eventParticipant.create({
+      data: {
+        eventId: ev.id,
+        userId: user.id,
+        role: RoleInEvent.PARTICIPANT,
+        status: EventParticipantStatus.GOING,
+      },
+      select: { id: true },
+    });
+
+    return {
+      eventId: ev.id,
+      participantId: created.id,
+      userId: user.id,
+      isGuest: user.isGuest,
     };
   }
 }
