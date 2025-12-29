@@ -8,10 +8,16 @@ import { ClassSerializerInterceptor } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { AllExceptionsFilter } from './infrastructure/http/exception';
 import { SuccessResponseInterceptor } from './infrastructure/http/success';
+import { RequestMethod } from '@nestjs/common';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
-  app.setGlobalPrefix('api');
+  app.setGlobalPrefix('api', {
+    exclude: [
+      { path: '.well-known/(.*)', method: RequestMethod.ALL },
+      { path: 'welcome/(.*)', method: RequestMethod.ALL },
+    ],
+  });
   app.enableVersioning();
 
   const reflector = app.get(Reflector);

@@ -8,6 +8,7 @@ import { EventInvitesModule } from './api/event-invites/event-invites.module';
 import { MeModule } from './api/me/me.module';
 import { JoinModule } from './api/join/join.module';
 import { RemindersModule } from './api/reminders/reminders.module';
+import { DeepLinksModule } from './api/deep-links/deep-links.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { RemindersModule } from './api/reminders/reminders.module';
     MeModule,
     JoinModule,
     RemindersModule,
+    DeepLinksModule,
   ],
 })
 export class AppModule { }
