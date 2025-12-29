@@ -8,7 +8,12 @@ import { MeInvitationsResponseDto } from './dto/me-invitations-response.dto';
 import { ListMyNotificationsQueryDto } from '../notifications/dto/list-my-notifications-query.dto';
 import { MyNotificationsResponseDto } from '../notifications/dto/my-notifications-response.dto';
 import { NotificationDto } from '../notifications/dto/notification.dto';
+import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiTags, ApiUnauthorizedResponse } from '@nestjs/swagger';
+import { MeEventsListResponseDto } from './dto/me-events-list.response.dto';
+import { MeEventsQueryDto } from './dto/me-events-query.dto';
 
+@ApiTags('Me')
+@ApiBearerAuth()
 @Controller('me')
 @UseGuards(JwtAuthGuard)
 @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
@@ -29,5 +34,13 @@ export class MeController {
   @HttpCode(200)
   markNotificationAsRead(@CurrentUser() user: JwtUser, @Param('notificationId') notificationId: string): Promise<NotificationDto> {
     return this.meService.markNotificationAsRead(user, notificationId);
+  }
+
+  @Get('events')
+  @ApiOperation({ summary: 'Lister mes événements (future|past|cancelled)' })
+  @ApiOkResponse({ type: MeEventsListResponseDto })
+  @ApiUnauthorizedResponse({ description: 'Unauthorized' })
+  listMyEvents(@CurrentUser() user: JwtUser, @Query() query: MeEventsQueryDto): Promise<MeEventsListResponseDto> {
+    return this.meService.listMyEvents(user, query);
   }
 }
