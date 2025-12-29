@@ -10,6 +10,7 @@ import {
   ApiTags,
   ApiUnauthorizedResponse,
   ApiCreatedResponse,
+  ApiParam,
 } from '@nestjs/swagger';
 import { EventsService } from './events.service';
 import { CreateEventDto } from './dto/create-event.dto';
@@ -35,6 +36,7 @@ import { EventParticipantsSummaryDto } from '../event-participants/dto/event-par
 import { BroadcastEventDto } from './dto/broadcast-event.dto';
 import { BroadcastEventResponseDto } from './dto/broadcast-event-response.dto';
 import { UpdateEventDto } from './dto/update-event.dto';
+import { UpdateEventStatusDto } from './dto/update-event-status.dto';
 
 @ApiTags('Events')
 @ApiBearerAuth()
@@ -191,6 +193,13 @@ export class EventsController {
 
   @UseGuards(JwtAuthGuard)
   @Patch(':eventId/complete')
+  @ApiOperation({ summary: 'Marquer un event comme terminé (COMPLETED)' })
+  @ApiParam({ name: 'eventId', type: String })
+  @ApiOkResponse({ type: UpdateEventStatusDto, description: 'Event marqué COMPLETED (ou déjà COMPLETED)' })
+  @ApiUnauthorizedResponse({ description: 'Unauthorized' })
+  @ApiNotFoundResponse({ description: 'Event not found' })
+  @ApiForbiddenResponse({ description: 'Only organiser can complete this event' })
+  @ApiBadRequestResponse({ description: 'Invalid state transition (ex: event CANCELLED)' })
   async completeEvent(@Param('eventId') eventId: string, @CurrentUser() user: JwtUser) {
     const currentUserId = user.userId;
     return this.eventsService.completeEvent(eventId, currentUserId);

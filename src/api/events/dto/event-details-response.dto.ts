@@ -1,7 +1,4 @@
-import {
-  CurrentUserParticipationResponseDto,
-  EventParticipantDto,
-} from '@/api/event-participants/dto/event-participant.dto';
+import { CurrentUserParticipationResponseDto, EventParticipantDto } from '@/api/event-participants/dto/event-participant.dto';
 import { SimpleUserResponseDto } from '@/api/users/dto/simple-user.dto';
 import { EventStatus } from '@prisma/client';
 import { Expose, Transform, Type } from 'class-transformer';
@@ -17,12 +14,9 @@ export class EventBlockResponseDto {
   description!: string | null;
 
   @Expose()
-  @Transform(
-    ({ value }) => (value instanceof Date ? value.toISOString() : value),
-    {
-      toPlainOnly: true,
-    },
-  )
+  @Transform(({ value }) => (value instanceof Date ? value.toISOString() : value), {
+    toPlainOnly: true,
+  })
   startDateTime: Date | string;
 
   @Expose()
@@ -42,6 +36,12 @@ export class EventBlockResponseDto {
 
   @Expose()
   eventCode!: string;
+
+  @Expose()
+  completedAt!: Date | null;
+
+  @Expose()
+  goingCountAtCompletion: number | null;
 }
 
 export class EventDetailsResponseDto {
