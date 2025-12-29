@@ -200,7 +200,7 @@ export class EventsController {
   @ApiNotFoundResponse({ description: 'Event not found' })
   @ApiForbiddenResponse({ description: 'Only organiser can complete this event' })
   @ApiBadRequestResponse({ description: 'Invalid state transition (ex: event CANCELLED)' })
-  async completeEvent(@Param('eventId') eventId: string, @CurrentUser() user: JwtUser) {
+  async completeEvent(@Param('eventId') eventId: string, @CurrentUser() user: JwtUser): Promise<EventDetailsResponseDto> {
     const currentUserId = user.userId;
     return this.eventsService.completeEvent(eventId, currentUserId);
   }
