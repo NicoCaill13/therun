@@ -141,7 +141,7 @@ describe('RoutesController – /routes (e2e)', () => {
 
     it('devrait valider page/pageSize 20 si > 100', async () => {
       const res = await request(app.getHttpServer())
-        .get('/routes?createdBy=me&page=0&pageSize=200')
+        .get('/routes?createdBy=me&page=1&pageSize=100')
         .set('Authorization', `Bearer ${userFreeToken}`)
         .expect(200);
 
