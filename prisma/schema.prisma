@@ -90,6 +90,9 @@ model Event {
   startDateTime DateTime
   status        EventStatus @default(PLANNED)
 
+  completedAt            DateTime?
+  goingCountAtCompletion Int?
+
   // Organisateur principal
   organiserId String
   organiser   User   @relation("OrganiserEvents", fields: [organiserId], references: [id])

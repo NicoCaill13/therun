@@ -1,9 +1,8 @@
 // src/events/events.service.ts
-import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException, BadRequestException, Logger } from '@nestjs/common';
 import { PrismaService } from '@/infrastructure/db/prisma.service';
 import { EventParticipantStatus, EventStatus, NotificationType, RoleInEvent, User, UserPlan } from '@prisma/client';
 import { CreateEventDto } from './dto/create-event.dto';
-import { UserService } from '../users/user.service';
 import { EventParticipantsService } from '../event-participants/event-participants.service';
 import { EventBlockResponseDto, EventDetailsResponseDto } from './dto/event-details-response.dto';
 import { CurrentUserParticipationResponseDto, EventParticipantDto } from '../event-participants/dto/event-participant.dto';
@@ -16,8 +15,7 @@ import { randomInt } from 'crypto';
 import { PublicEventByCodeResponseDto } from './dto/public-event-by-code-response.dto';
 import { PublicGuestJoinDto } from './dto/public-guest-join.dto';
 import { PublicGuestJoinResponseDto } from './dto/public-guest-join-response.dto';
-import { PublicGuestAuthDto } from './dto/public-guest-auth.dto';
-import { PublicGuestAuthResponseDto } from './dto/public-guest-auth-response.dto';
+import { Cron } from '@nestjs/schedule';
 
 function iso(d: Date | null | undefined) {
   return d ? d.toISOString() : null;
@@ -34,12 +32,13 @@ function locationSignature(e: {
 }
 
 const EVENT_CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+const AUTO_COMPLETE_AFTER_MINUTES = 240;
 
 @Injectable()
 export class EventsService {
+  private readonly logger = new Logger(EventsService.name);
   constructor(
     private readonly prisma: PrismaService,
-    private readonly userService: UserService,
     private readonly eventParticipantService: EventParticipantsService,
     private readonly notificationsService: NotificationsService,
   ) { }
@@ -207,6 +206,8 @@ export class EventsService {
       locationLng: event.locationLng,
       status: event.status,
       eventCode: event.eventCode,
+      completedAt: event.completedAt,
+      goingCountAtCompletion: event.goingCountAtCompletion,
     };
 
     const organiserDisplayName = this.getUserDisplayName(event.organiser);
@@ -637,5 +638,29 @@ export class EventsService {
       userId: user.id,
       isGuest: user.isGuest,
     };
+  }
+
+  async runAutoCompleteEvents(now: Date) {
+    const cutoff = new Date(now.getTime() - AUTO_COMPLETE_AFTER_MINUTES * 60_000);
+
+    const res = await this.prisma.event.updateMany({
+      where: {
+        status: EventStatus.PLANNED,
+        startDateTime: { lt: cutoff },
+      },
+      data: { status: EventStatus.COMPLETED },
+    });
+
+    if (res.count > 0) {
+      this.logger.log(`Auto-completed events: ${res.count}`);
+    }
+
+    return { updated: res.count };
+  }
+
+  // Cron (si tu veux l’activer en prod)
+  @Cron('*/10 * * * *')
+  async handleAutoCompleteCron() {
+    await this.runAutoCompleteEvents(new Date());
   }
 }
