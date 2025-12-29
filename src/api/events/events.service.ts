@@ -1,7 +1,7 @@
 // src/events/events.service.ts
 import { Injectable, NotFoundException, ForbiddenException, BadRequestException, Logger } from '@nestjs/common';
 import { PrismaService } from '@/infrastructure/db/prisma.service';
-import { EventParticipantStatus, EventStatus, NotificationType, RoleInEvent, User, UserPlan } from '@prisma/client';
+import { EventParticipantStatus, EventStatus, NotificationType, RoleInEvent, User, UserPlan, Prisma } from '@prisma/client';
 import { CreateEventDto } from './dto/create-event.dto';
 import { EventParticipantsService } from '../event-participants/event-participants.service';
 import { EventBlockResponseDto, EventDetailsResponseDto } from './dto/event-details-response.dto';
@@ -33,6 +33,7 @@ function locationSignature(e: {
 
 const EVENT_CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 const AUTO_COMPLETE_AFTER_MINUTES = 240;
+const DEFAULT_ROUTE_RADIUS_METERS = 3000;
 
 @Injectable()
 export class EventsService {
@@ -69,6 +70,70 @@ export class EventsService {
     }
 
     throw new BadRequestException('Unable to generate unique eventCode');
+  }
+
+  private async publishEventRoutesToLibrary(
+    tx: Prisma.TransactionClient,
+    input: { eventId: string; organiserId: string; centerLat: number | null; centerLng: number | null },
+  ): Promise<{ createdRoutesCount: number; linkedEventRoutesCount: number; skippedCount: number }> {
+    const eventRoutes = await tx.eventRoute.findMany({
+      where: { eventId: input.eventId },
+      select: {
+        id: true,
+        routeId: true,
+        name: true,
+        encodedPolyline: true,
+        distanceMeters: true,
+        type: true,
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    let createdRoutesCount = 0;
+    let linkedEventRoutesCount = 0;
+    let skippedCount = 0;
+
+    const centerLat = input.centerLat ?? 0; // fallback MVP (tests seedent un lieu)
+    const centerLng = input.centerLng ?? 0;
+
+    for (const er of eventRoutes) {
+      // idempotence: déjà lié
+      if (er.routeId) {
+        skippedCount += 1;
+        continue;
+      }
+
+      // garde-fous MVP
+      if (!er.encodedPolyline || er.encodedPolyline.trim().length === 0) {
+        // tracé invalide -> on skip (mais pas d'erreur)
+        skippedCount += 1;
+        continue;
+      }
+
+      const route = await tx.route.create({
+        data: {
+          ownerId: input.organiserId,
+          name: er.name,
+          encodedPolyline: er.encodedPolyline,
+          distanceMeters: er.distanceMeters,
+          centerLat,
+          centerLng,
+          radiusMeters: DEFAULT_ROUTE_RADIUS_METERS,
+          type: er.type ?? null,
+        },
+        select: { id: true },
+      });
+
+      createdRoutesCount += 1;
+
+      await tx.eventRoute.update({
+        where: { id: er.id },
+        data: { routeId: route.id },
+      });
+      linkedEventRoutesCount += 1;
+    }
+
+    return { createdRoutesCount, linkedEventRoutesCount, skippedCount };
   }
 
   /**
@@ -315,36 +380,47 @@ export class EventsService {
   }
 
   async completeEvent(eventId: string, currentUserId: string) {
-    // 1. Récupérer l’event
-    const event = await this.prisma.event.findUnique({
-      where: { id: eventId },
-    });
-
-    if (!event) {
-      throw new NotFoundException('Event not found');
-    }
-
-    // 2. Vérifier que le user courant est bien l’organisateur
-    if (event.organiserId !== currentUserId) {
-      throw new ForbiddenException('Only organiser can complete this event.');
-    }
-
-    // 3. Si l’event est annulé, on peut choisir de refuser (optionnel pour MVP)
-    if (event.status === EventStatus.CANCELLED) {
-      throw new BadRequestException('Cannot complete a cancelled event.');
-    }
-
-    // 4. Si déjà COMPLETED → idempotent : on ne refait pas un update
-    if (event.status !== EventStatus.COMPLETED) {
-      await this.prisma.event.update({
+    await this.prisma.$transaction(async (tx) => {
+      const event = await tx.event.findUnique({
         where: { id: eventId },
-        data: {
-          status: EventStatus.COMPLETED,
+        select: {
+          id: true,
+          organiserId: true,
+          status: true,
+          locationLat: true,
+          locationLng: true,
         },
       });
-    }
+      if (!event) {
+        throw new NotFoundException('Event not found');
+      }
+      if (event.organiserId !== currentUserId) {
+        throw new ForbiddenException('Only organiser can complete this event.');
+      }
+      if (event.status === EventStatus.CANCELLED) {
+        throw new BadRequestException('Cannot complete a cancelled event.');
+      }
+      const goingCount = await tx.eventParticipant.count({
+        where: { eventId: event.id, status: EventParticipantStatus.GOING },
+      });
 
-    // 5. On renvoie le même payload que GET /events/:eventId
+      if (event.status !== EventStatus.COMPLETED) {
+        await tx.event.update({
+          where: { id: event.id },
+          data: {
+            status: EventStatus.COMPLETED,
+            completedAt: new Date(),
+            goingCountAtCompletion: goingCount,
+          },
+        });
+      }
+      await this.publishEventRoutesToLibrary(tx, {
+        eventId: event.id,
+        organiserId: event.organiserId,
+        centerLat: event.locationLat ?? null,
+        centerLng: event.locationLng ?? null,
+      });
+    });
     return this.getEventDetails(eventId, currentUserId);
   }
 
