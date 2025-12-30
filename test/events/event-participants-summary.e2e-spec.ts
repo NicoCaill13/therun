@@ -10,6 +10,8 @@ describe('EventsController – GET /events/:eventId/participants/summary (e2e)',
 
   let organiser: any;
   let organiserToken: string;
+  let premium: any;
+  let premiumToken: string;
   let otherUser: any;
   let otherUserToken: string;
 

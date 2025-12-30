@@ -10,6 +10,8 @@ import {
   ApiTags,
   ApiUnauthorizedResponse,
   ApiCreatedResponse,
+  ApiParam,
+  ApiResponse,
 } from '@nestjs/swagger';
 import { EventsService } from './events.service';
 import { CreateEventDto } from './dto/create-event.dto';
@@ -35,6 +37,8 @@ import { EventParticipantsSummaryDto } from '../event-participants/dto/event-par
 import { BroadcastEventDto } from './dto/broadcast-event.dto';
 import { BroadcastEventResponseDto } from './dto/broadcast-event-response.dto';
 import { UpdateEventDto } from './dto/update-event.dto';
+import { UpdateEventStatusDto } from './dto/update-event-status.dto';
+import { DuplicateEventDto } from './dto/duplicate-event.dto';
 
 @ApiTags('Events')
 @ApiBearerAuth()
@@ -191,7 +195,14 @@ export class EventsController {
 
   @UseGuards(JwtAuthGuard)
   @Patch(':eventId/complete')
-  async completeEvent(@Param('eventId') eventId: string, @CurrentUser() user: JwtUser) {
+  @ApiOperation({ summary: 'Marquer un event comme terminé (COMPLETED)' })
+  @ApiParam({ name: 'eventId', type: String })
+  @ApiOkResponse({ type: UpdateEventStatusDto, description: 'Event marqué COMPLETED (ou déjà COMPLETED)' })
+  @ApiUnauthorizedResponse({ description: 'Unauthorized' })
+  @ApiNotFoundResponse({ description: 'Event not found' })
+  @ApiForbiddenResponse({ description: 'Only organiser can complete this event' })
+  @ApiBadRequestResponse({ description: 'Invalid state transition (ex: event CANCELLED)' })
+  async completeEvent(@Param('eventId') eventId: string, @CurrentUser() user: JwtUser): Promise<EventDetailsResponseDto> {
     const currentUserId = user.userId;
     return this.eventsService.completeEvent(eventId, currentUserId);
   }
@@ -248,5 +259,21 @@ export class EventsController {
   @Get(':eventId/participants/summary')
   getParticipantsSummary(@Param('eventId') eventId: string, @CurrentUser() user: JwtUser): Promise<EventParticipantsSummaryDto> {
     return this.eventParticipantsService.getParticipantsSummary(eventId, user.userId);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post(':eventId/duplicate')
+  @ApiOperation({ summary: 'Dupliquer un event COMPLETED (structures routes/groupes, sans participants)' })
+  @ApiResponse({ status: 201, type: EventDetailsResponseDto })
+  @ApiBadRequestResponse({ description: 'Bad Request (event non COMPLETED / payload invalid)' })
+  @ApiUnauthorizedResponse({ description: 'Unauthorized' })
+  @ApiForbiddenResponse({ description: 'Forbidden (not organiser)' })
+  @ApiNotFoundResponse({ description: 'Not Found (event)' })
+  async duplicateEvent(
+    @Param('eventId') eventId: string,
+    @CurrentUser() user: JwtUser,
+    @Body() dto: DuplicateEventDto,
+  ): Promise<EventDetailsResponseDto> {
+    return this.eventsService.duplicateEvent(eventId, user.userId, dto);
   }
 }

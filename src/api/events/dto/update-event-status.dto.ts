@@ -3,7 +3,7 @@ import { EventStatus } from '@prisma/client';
 import { IsEnum } from 'class-validator';
 
 export class UpdateEventStatusDto {
-  @ApiProperty({ enum: EventStatus, example: EventStatus.CANCELLED })
-  @IsEnum(EventStatus)
-  status: EventStatus;
+  @ApiProperty({ enum: EventStatus, example: EventStatus.COMPLETED })
+  @IsEnum(EventStatus, { message: 'status must be a valid EventStatus' })
+  status!: EventStatus;
 }

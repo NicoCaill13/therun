@@ -10,6 +10,18 @@ import { ListRoutesQueryDto } from './dto/list-routes-query.dto';
 import { SuggestRoutesQueryDto } from './dto/suggest-routes-query.dto';
 import { SuggestRoutesResponseDto } from './dto/suggest-routes-response.dto';
 
+function metersToLatDelta(radiusMeters: number) {
+  return radiusMeters / 111_320;
+}
+function metersToLngDelta(radiusMeters: number, lat: number) {
+  const rad = (lat * Math.PI) / 180;
+  return radiusMeters / (111_320 * Math.cos(rad));
+}
+
+const DEFAULT_PAGE = 1;
+const DEFAULT_PAGE_SIZE = 20;
+const MAX_PAGE_SIZE = 100;
+
 @Injectable()
 export class RoutesService {
   constructor(private readonly prisma: PrismaService) { }
@@ -79,28 +91,58 @@ export class RoutesService {
     };
   }
 
-  async listRoutes(user: JwtUser, params: ListRoutesQueryDto): Promise<RouteListResponseDto> {
-    const { createdBy, page: pageRaw, pageSize: pageSizeRaw } = params;
-    if (!createdBy) {
-      throw new BadRequestException('createdBy query param is required (ex: createdBy=me)');
+  async listRoutes(user: JwtUser, query: ListRoutesQueryDto): Promise<RouteListResponseDto> {
+    const hasGeoFilter = typeof query.lat === 'number' || typeof query.lng === 'number' || typeof query.radiusMeters === 'number';
+
+    const hasDistanceFilter = typeof query.distanceMin === 'number' || typeof query.distanceMax === 'number';
+
+    const hasAnySearchFilter = hasGeoFilter || hasDistanceFilter;
+
+    if (!query.createdBy && !hasAnySearchFilter) {
+      throw new BadRequestException(['createdBy is required']);
     }
 
-    if (createdBy !== 'me') {
-      throw new BadRequestException('Only createdBy=me is supported for now');
+    let page = query.page ?? DEFAULT_PAGE;
+    let pageSize = query.pageSize ?? DEFAULT_PAGE_SIZE;
+    if (pageSize >= MAX_PAGE_SIZE) pageSize = DEFAULT_PAGE_SIZE;
+    if (pageSize < 1) pageSize = DEFAULT_PAGE_SIZE;
+
+    if (page < 1) page = DEFAULT_PAGE;
+
+    const skip = (page - 1) * pageSize;
+
+    const where: any = {};
+
+    const restrictToMe = user.plan !== UserPlan.PREMIUM || query.createdBy === 'me';
+    if (restrictToMe) {
+      where.ownerId = user.userId;
     }
 
-    const page = pageRaw && pageRaw > 0 ? pageRaw : 1;
+    if (typeof query.distanceMin === 'number' || typeof query.distanceMax === 'number') {
+      where.distanceMeters = {};
+      if (typeof query.distanceMin === 'number') where.distanceMeters.gte = query.distanceMin;
+      if (typeof query.distanceMax === 'number') where.distanceMeters.lte = query.distanceMax;
+    }
 
-    const pageSize = pageSizeRaw && pageSizeRaw > 0 && pageSizeRaw <= 100 ? pageSizeRaw : 20;
+    if (
+      typeof query.lat === 'number' &&
+      typeof query.lng === 'number' &&
+      typeof query.radiusMeters === 'number' &&
+      query.radiusMeters > 0
+    ) {
+      const dLat = metersToLatDelta(query.radiusMeters);
+      const dLng = metersToLngDelta(query.radiusMeters, query.lat);
 
-    const where = { ownerId: user.userId };
+      where.centerLat = { gte: query.lat - dLat, lte: query.lat + dLat };
+      where.centerLng = { gte: query.lng - dLng, lte: query.lng + dLng };
+    }
 
-    const [totalCount, routes] = await this.prisma.$transaction([
+    const [totalCount, routes] = await Promise.all([
       this.prisma.route.count({ where }),
       this.prisma.route.findMany({
         where,
         orderBy: { createdAt: 'desc' },
-        skip: (page - 1) * pageSize,
+        skip,
         take: pageSize,
       }),
     ]);
@@ -113,7 +155,7 @@ export class RoutesService {
       pageSize,
       totalCount,
       totalPages,
-    };
+    } as any;
   }
 
   async suggestRoutes(user: JwtUser, q: SuggestRoutesQueryDto): Promise<SuggestRoutesResponseDto> {

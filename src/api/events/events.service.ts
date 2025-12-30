@@ -1,9 +1,8 @@
 // src/events/events.service.ts
-import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException, BadRequestException, Logger } from '@nestjs/common';
 import { PrismaService } from '@/infrastructure/db/prisma.service';
-import { EventParticipantStatus, EventStatus, NotificationType, RoleInEvent, User, UserPlan } from '@prisma/client';
+import { EventParticipantStatus, EventStatus, NotificationType, RoleInEvent, User, UserPlan, Prisma } from '@prisma/client';
 import { CreateEventDto } from './dto/create-event.dto';
-import { UserService } from '../users/user.service';
 import { EventParticipantsService } from '../event-participants/event-participants.service';
 import { EventBlockResponseDto, EventDetailsResponseDto } from './dto/event-details-response.dto';
 import { CurrentUserParticipationResponseDto, EventParticipantDto } from '../event-participants/dto/event-participant.dto';
@@ -16,8 +15,8 @@ import { randomInt } from 'crypto';
 import { PublicEventByCodeResponseDto } from './dto/public-event-by-code-response.dto';
 import { PublicGuestJoinDto } from './dto/public-guest-join.dto';
 import { PublicGuestJoinResponseDto } from './dto/public-guest-join-response.dto';
-import { PublicGuestAuthDto } from './dto/public-guest-auth.dto';
-import { PublicGuestAuthResponseDto } from './dto/public-guest-auth-response.dto';
+import { Cron } from '@nestjs/schedule';
+import { DuplicateEventDto } from './dto/duplicate-event.dto';
 
 function iso(d: Date | null | undefined) {
   return d ? d.toISOString() : null;
@@ -34,12 +33,14 @@ function locationSignature(e: {
 }
 
 const EVENT_CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+const AUTO_COMPLETE_AFTER_MINUTES = 240;
+const DEFAULT_ROUTE_RADIUS_METERS = 3000;
 
 @Injectable()
 export class EventsService {
+  private readonly logger = new Logger(EventsService.name);
   constructor(
     private readonly prisma: PrismaService,
-    private readonly userService: UserService,
     private readonly eventParticipantService: EventParticipantsService,
     private readonly notificationsService: NotificationsService,
   ) { }
@@ -70,6 +71,70 @@ export class EventsService {
     }
 
     throw new BadRequestException('Unable to generate unique eventCode');
+  }
+
+  private async publishEventRoutesToLibrary(
+    tx: Prisma.TransactionClient,
+    input: { eventId: string; organiserId: string; centerLat: number | null; centerLng: number | null },
+  ): Promise<{ createdRoutesCount: number; linkedEventRoutesCount: number; skippedCount: number }> {
+    const eventRoutes = await tx.eventRoute.findMany({
+      where: { eventId: input.eventId },
+      select: {
+        id: true,
+        routeId: true,
+        name: true,
+        encodedPolyline: true,
+        distanceMeters: true,
+        type: true,
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    let createdRoutesCount = 0;
+    let linkedEventRoutesCount = 0;
+    let skippedCount = 0;
+
+    const centerLat = input.centerLat ?? 0; // fallback MVP (tests seedent un lieu)
+    const centerLng = input.centerLng ?? 0;
+
+    for (const er of eventRoutes) {
+      // idempotence: déjà lié
+      if (er.routeId) {
+        skippedCount += 1;
+        continue;
+      }
+
+      // garde-fous MVP
+      if (!er.encodedPolyline || er.encodedPolyline.trim().length === 0) {
+        // tracé invalide -> on skip (mais pas d'erreur)
+        skippedCount += 1;
+        continue;
+      }
+
+      const route = await tx.route.create({
+        data: {
+          ownerId: input.organiserId,
+          name: er.name,
+          encodedPolyline: er.encodedPolyline,
+          distanceMeters: er.distanceMeters,
+          centerLat,
+          centerLng,
+          radiusMeters: DEFAULT_ROUTE_RADIUS_METERS,
+          type: er.type ?? null,
+        },
+        select: { id: true },
+      });
+
+      createdRoutesCount += 1;
+
+      await tx.eventRoute.update({
+        where: { id: er.id },
+        data: { routeId: route.id },
+      });
+      linkedEventRoutesCount += 1;
+    }
+
+    return { createdRoutesCount, linkedEventRoutesCount, skippedCount };
   }
 
   /**
@@ -207,6 +272,8 @@ export class EventsService {
       locationLng: event.locationLng,
       status: event.status,
       eventCode: event.eventCode,
+      completedAt: event.completedAt,
+      goingCountAtCompletion: event.goingCountAtCompletion,
     };
 
     const organiserDisplayName = this.getUserDisplayName(event.organiser);
@@ -314,36 +381,47 @@ export class EventsService {
   }
 
   async completeEvent(eventId: string, currentUserId: string) {
-    // 1. Récupérer l’event
-    const event = await this.prisma.event.findUnique({
-      where: { id: eventId },
-    });
-
-    if (!event) {
-      throw new NotFoundException('Event not found');
-    }
-
-    // 2. Vérifier que le user courant est bien l’organisateur
-    if (event.organiserId !== currentUserId) {
-      throw new ForbiddenException('Only organiser can complete this event.');
-    }
-
-    // 3. Si l’event est annulé, on peut choisir de refuser (optionnel pour MVP)
-    if (event.status === EventStatus.CANCELLED) {
-      throw new BadRequestException('Cannot complete a cancelled event.');
-    }
-
-    // 4. Si déjà COMPLETED → idempotent : on ne refait pas un update
-    if (event.status !== EventStatus.COMPLETED) {
-      await this.prisma.event.update({
+    await this.prisma.$transaction(async (tx) => {
+      const event = await tx.event.findUnique({
         where: { id: eventId },
-        data: {
-          status: EventStatus.COMPLETED,
+        select: {
+          id: true,
+          organiserId: true,
+          status: true,
+          locationLat: true,
+          locationLng: true,
         },
       });
-    }
+      if (!event) {
+        throw new NotFoundException('Event not found');
+      }
+      if (event.organiserId !== currentUserId) {
+        throw new ForbiddenException('Only organiser can complete this event.');
+      }
+      if (event.status === EventStatus.CANCELLED) {
+        throw new BadRequestException('Cannot complete a cancelled event.');
+      }
+      const goingCount = await tx.eventParticipant.count({
+        where: { eventId: event.id, status: EventParticipantStatus.GOING },
+      });
 
-    // 5. On renvoie le même payload que GET /events/:eventId
+      if (event.status !== EventStatus.COMPLETED) {
+        await tx.event.update({
+          where: { id: event.id },
+          data: {
+            status: EventStatus.COMPLETED,
+            completedAt: new Date(),
+            goingCountAtCompletion: goingCount,
+          },
+        });
+      }
+      await this.publishEventRoutesToLibrary(tx, {
+        eventId: event.id,
+        organiserId: event.organiserId,
+        centerLat: event.locationLat ?? null,
+        centerLng: event.locationLng ?? null,
+      });
+    });
     return this.getEventDetails(eventId, currentUserId);
   }
 
@@ -637,5 +715,156 @@ export class EventsService {
       userId: user.id,
       isGuest: user.isGuest,
     };
+  }
+
+  async runAutoCompleteEvents(now: Date) {
+    const cutoff = new Date(now.getTime() - AUTO_COMPLETE_AFTER_MINUTES * 60_000);
+
+    const res = await this.prisma.event.updateMany({
+      where: {
+        status: EventStatus.PLANNED,
+        startDateTime: { lt: cutoff },
+      },
+      data: { status: EventStatus.COMPLETED },
+    });
+
+    if (res.count > 0) {
+      this.logger.log(`Auto-completed events: ${res.count}`);
+    }
+
+    return { updated: res.count };
+  }
+
+  // Cron (si tu veux l’activer en prod)
+  @Cron('*/10 * * * *')
+  async handleAutoCompleteCron() {
+    await this.runAutoCompleteEvents(new Date());
+  }
+
+  async duplicateEvent(eventId: string, currentUserId: string, dto: DuplicateEventDto) {
+    const newEventId = await this.prisma.$transaction(async (tx) => {
+      const src = await tx.event.findUnique({
+        where: { id: eventId },
+        select: {
+          id: true,
+          organiserId: true,
+          status: true,
+          title: true,
+          description: true,
+          locationName: true,
+          locationAddress: true,
+          locationLat: true,
+          locationLng: true,
+          routes: {
+            orderBy: { createdAt: 'asc' },
+            select: {
+              id: true,
+              routeId: true,
+              name: true,
+              distanceMeters: true,
+              type: true,
+              encodedPolyline: true,
+              eventGroups: {
+                orderBy: { createdAt: 'asc' },
+                select: { id: true, label: true, paceMinKmh: true, paceMaxKmh: true },
+              },
+            },
+          },
+        },
+      });
+      if (!src) throw new NotFoundException('Event not found');
+      if (src.organiserId !== currentUserId) {
+        throw new ForbiddenException('Only organiser can duplicate this event.');
+      }
+      if (src.status !== EventStatus.COMPLETED) {
+        throw new BadRequestException('Only COMPLETED events can be duplicated.');
+      }
+      const startDateTime = new Date(dto.startDateTime);
+      if (Number.isNaN(startDateTime.getTime())) {
+        throw new BadRequestException('Invalid startDateTime');
+      }
+
+      const eventCode = await this.generateUniqueEventCode();
+
+      const newEvent = await tx.event.create({
+        data: {
+          organiserId: src.organiserId,
+          status: EventStatus.PLANNED,
+          startDateTime: new Date(dto.startDateTime),
+
+          title: dto.title ?? src.title,
+          description: dto.description ?? src.description,
+
+          locationName: dto.locationName ?? src.locationName,
+          locationAddress: dto.locationAddress ?? src.locationAddress,
+          locationLat: dto.locationLat ?? src.locationLat,
+          locationLng: dto.locationLng ?? src.locationLng,
+
+          eventCode,
+        },
+        select: { id: true },
+      });
+      await this.eventParticipantService.createOrganiserParticipant(newEvent.id, src.organiserId, tx);
+      const routeIdMap = new Map<string, string>();
+
+      for (const r of src.routes) {
+        const createdRoute = await tx.eventRoute.create({
+          data: {
+            eventId: newEvent.id,
+            routeId: r.routeId ?? null,
+            name: r.name,
+            distanceMeters: r.distanceMeters,
+            type: r.type ?? null,
+            encodedPolyline: r.encodedPolyline,
+          },
+          select: { id: true },
+        });
+
+        routeIdMap.set(r.id, createdRoute.id);
+
+        const wantAll = dto.copyAllGroups === true;
+        const wantSelect = Array.isArray(dto.groupIds) && dto.groupIds.length > 0;
+
+        if (wantAll || wantSelect) {
+          const srcGroups = await tx.eventGroup.findMany({
+            where: wantAll ? { eventRoute: { eventId: src.id } } : { id: { in: dto.groupIds! } },
+            select: {
+              id: true,
+              label: true,
+              paceMinKmh: true,
+              paceMaxKmh: true,
+              eventRouteId: true,
+              eventRoute: { select: { eventId: true } },
+            },
+            orderBy: { createdAt: 'asc' },
+          });
+
+          if (wantSelect) {
+            const bad = srcGroups.find((g) => g.eventRoute.eventId !== src.id);
+            if (bad) {
+              throw new BadRequestException('Some groupIds do not belong to source event');
+            }
+          }
+          const data = srcGroups
+            .map((g) => {
+              const newEventRouteId = routeIdMap.get(g.eventRouteId);
+              if (!newEventRouteId) return null;
+              return {
+                eventRouteId: newEventRouteId,
+                label: g.label,
+                paceMinKmh: g.paceMinKmh,
+                paceMaxKmh: g.paceMaxKmh,
+              };
+            })
+            .filter(Boolean) as Array<{ eventRouteId: string; label: string; paceMinKmh: number | null; paceMaxKmh: number | null }>;
+
+          if (data.length > 0) {
+            await tx.eventGroup.createMany({ data });
+          }
+        }
+      }
+      return newEvent.id;
+    });
+    return this.getEventDetails(newEventId, currentUserId);
   }
 }
