@@ -11,6 +11,7 @@ import {
   ApiUnauthorizedResponse,
   ApiCreatedResponse,
   ApiParam,
+  ApiResponse,
 } from '@nestjs/swagger';
 import { EventsService } from './events.service';
 import { CreateEventDto } from './dto/create-event.dto';
@@ -37,6 +38,7 @@ import { BroadcastEventDto } from './dto/broadcast-event.dto';
 import { BroadcastEventResponseDto } from './dto/broadcast-event-response.dto';
 import { UpdateEventDto } from './dto/update-event.dto';
 import { UpdateEventStatusDto } from './dto/update-event-status.dto';
+import { DuplicateEventDto } from './dto/duplicate-event.dto';
 
 @ApiTags('Events')
 @ApiBearerAuth()
@@ -257,5 +259,21 @@ export class EventsController {
   @Get(':eventId/participants/summary')
   getParticipantsSummary(@Param('eventId') eventId: string, @CurrentUser() user: JwtUser): Promise<EventParticipantsSummaryDto> {
     return this.eventParticipantsService.getParticipantsSummary(eventId, user.userId);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post(':eventId/duplicate')
+  @ApiOperation({ summary: 'Dupliquer un event COMPLETED (structures routes/groupes, sans participants)' })
+  @ApiResponse({ status: 201, type: EventDetailsResponseDto })
+  @ApiBadRequestResponse({ description: 'Bad Request (event non COMPLETED / payload invalid)' })
+  @ApiUnauthorizedResponse({ description: 'Unauthorized' })
+  @ApiForbiddenResponse({ description: 'Forbidden (not organiser)' })
+  @ApiNotFoundResponse({ description: 'Not Found (event)' })
+  async duplicateEvent(
+    @Param('eventId') eventId: string,
+    @CurrentUser() user: JwtUser,
+    @Body() dto: DuplicateEventDto,
+  ): Promise<EventDetailsResponseDto> {
+    return this.eventsService.duplicateEvent(eventId, user.userId, dto);
   }
 }

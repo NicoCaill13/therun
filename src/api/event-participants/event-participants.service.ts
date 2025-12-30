@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '@/infrastructure/db/prisma.service';
-import { EventParticipantStatus, NotificationType, RoleInEvent } from '@prisma/client';
+import { EventParticipantStatus, NotificationType, Prisma, RoleInEvent } from '@prisma/client';
 import { InviteParticipantResponseDto } from './dto/invite-participant-response.dto';
 import { InviteParticipantDto } from './dto/invite-participant.dto';
 import { RespondInvitationDto } from './dto/respond-invitation.dto';
@@ -22,8 +22,12 @@ export class EventParticipantsService {
     private readonly notificationsService: NotificationsService,
   ) { }
 
-  async createOrganiserParticipant(eventId: string, userId: string) {
-    return this.prisma.eventParticipant.create({
+  async createOrganiserParticipant(eventId: string, userId: string, db: Prisma.TransactionClient | PrismaService = this.prisma) {
+    const existing = await db.eventParticipant.findFirst({
+      where: { eventId, userId, role: RoleInEvent.ORGANISER },
+    });
+    if (existing) return existing;
+    return db.eventParticipant.create({
       data: {
         eventId,
         userId,
