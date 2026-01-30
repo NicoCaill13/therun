@@ -3,14 +3,11 @@ import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '@/infrastructure/db/prisma.service';
 import { EventParticipantStatus, EventStatus, NotificationType } from '@prisma/client';
 import { NotificationsService } from '../notifications/notifications.service';
+import { addMinutes } from '@/common/utils/date.util';
 
 const OFFSET_MINUTES = 120;
 const ORGANISER_OFFSET_MINUTES = 180;
 const WINDOW_MINUTES = 10;
-
-function addMinutes(d: Date, minutes: number) {
-  return new Date(d.getTime() + minutes * 60_000);
-}
 
 @Injectable()
 export class RemindersService {
@@ -19,7 +16,7 @@ export class RemindersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly notificationsService: NotificationsService,
-  ) { }
+  ) {}
 
   @Cron('*/10 * * * *')
   async handleCron() {

@@ -25,7 +25,7 @@ import { ListRoutesQueryDto } from './dto/list-routes-query.dto';
 @Controller('routes')
 @UseGuards(JwtAuthGuard)
 export class RoutesController {
-  constructor(private readonly routesService: RoutesService) { }
+  constructor(private readonly routesService: RoutesService) {}
 
   @Post()
   @ApiOperation({ summary: 'Créer un parcours library' })

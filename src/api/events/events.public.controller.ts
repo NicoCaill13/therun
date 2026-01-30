@@ -16,7 +16,7 @@ import { PublicGuestJoinDto } from './dto/public-guest-join.dto';
 @ApiTags('Public')
 @Controller('public/events')
 export class EventsPublicController {
-  constructor(private readonly eventsService: EventsService) { }
+  constructor(private readonly eventsService: EventsService) {}
 
   @Get('by-code/:eventCode')
   @ApiOperation({ summary: 'Récupérer un event public par eventCode (QR)' })

@@ -1,32 +1,23 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { PrismaService } from '@/infrastructure/db/prisma.service';
 import { InviteSearchQueryDto } from './dto/invite-search-query.dto';
 import { InviteSearchResponseDto } from './dto/invite-search-response.dto';
+import { normalizePagination, computePaginationMeta } from '@/common/utils/pagination.util';
+import { findEventAsOrganiserOrThrow } from '@/common/helpers/event-access.helper';
 
 @Injectable()
 export class EventInvitesService {
-  constructor(private readonly prisma: PrismaService) { }
+  constructor(private readonly prisma: PrismaService) {}
 
   async searchUsersToInvite(eventId: string, callerId: string, dto: InviteSearchQueryDto): Promise<InviteSearchResponseDto> {
-    const event = await this.prisma.event.findUnique({
-      where: { id: eventId },
-      select: { id: true, organiserId: true },
-    });
+    await findEventAsOrganiserOrThrow(this.prisma, eventId, callerId, undefined, 'Only organiser can invite participants');
 
-    if (!event) {
-      throw new NotFoundException('Event not found');
-    }
-    if (event.organiserId !== callerId) {
-      throw new ForbiddenException('Only organiser can invite participants');
-    }
-
-    const page = dto.page ?? 1;
-    const pageSize = dto.pageSize ?? 20;
+    const pagination = normalizePagination(dto);
     const q = dto.query.trim();
 
     const where = {
       isGuest: false,
-      id: { not: callerId }, // exclure l’organisateur lui-même
+      id: { not: callerId },
       OR: [
         { firstName: { contains: q, mode: 'insensitive' as const } },
         { lastName: { contains: q, mode: 'insensitive' as const } },
@@ -40,19 +31,16 @@ export class EventInvitesService {
         where,
         select: { id: true, firstName: true, lastName: true, email: true },
         orderBy: { createdAt: 'desc' },
-        skip: (page - 1) * pageSize,
-        take: pageSize,
+        skip: pagination.skip,
+        take: pagination.pageSize,
       }),
     ]);
 
-    const totalPages = totalCount === 0 ? 0 : Math.ceil(totalCount / pageSize);
+    const meta = computePaginationMeta(totalCount, pagination);
 
     return {
       items: users,
-      page,
-      pageSize,
-      totalCount,
-      totalPages,
+      ...meta,
     };
   }
 }

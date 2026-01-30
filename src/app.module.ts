@@ -9,6 +9,7 @@ import { MeModule } from './api/me/me.module';
 import { JoinModule } from './api/join/join.module';
 import { RemindersModule } from './api/reminders/reminders.module';
 import { DeepLinksModule } from './api/deep-links/deep-links.module';
+import { AdminModule } from './api/admin/admin.module';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { DeepLinksModule } from './api/deep-links/deep-links.module';
     JoinModule,
     RemindersModule,
     DeepLinksModule,
+    AdminModule,
   ],
 })
-export class AppModule { }
+export class AppModule {}

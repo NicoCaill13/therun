@@ -15,4 +15,4 @@ import { AuthService } from './auth.service';
   providers: [JwtStrategy, AuthService],
   exports: [JwtModule, PassportModule, AuthService],
 })
-export class AuthModule { }
+export class AuthModule {}

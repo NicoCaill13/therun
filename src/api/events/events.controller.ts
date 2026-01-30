@@ -48,7 +48,7 @@ export class EventsController {
     private readonly eventsService: EventsService,
     private readonly eventRoutesService: EventRoutesService,
     private readonly eventParticipantsService: EventParticipantsService,
-  ) { }
+  ) {}
 
   @UseGuards(JwtAuthGuard)
   @Post()

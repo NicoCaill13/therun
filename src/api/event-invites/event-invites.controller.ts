@@ -9,7 +9,7 @@ import { InviteSearchResponseDto } from './dto/invite-search-response.dto';
 @Controller('events/:eventId/invite')
 @UseGuards(JwtAuthGuard)
 export class EventInvitesController {
-  constructor(private readonly eventInvitesService: EventInvitesService) { }
+  constructor(private readonly eventInvitesService: EventInvitesService) {}
 
   @Get('search')
   search(

@@ -9,4 +9,4 @@ import { NotificationsModule } from '../notifications/notifications.module';
   providers: [MeService],
   exports: [MeService],
 })
-export class MeModule { }
+export class MeModule {}

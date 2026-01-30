@@ -8,4 +8,4 @@ import { EventInvitesService } from './event-invites.service';
   providers: [EventInvitesService],
   exports: [EventInvitesService],
 })
-export class EventInvitesModule { }
+export class EventInvitesModule {}

@@ -1,25 +1,23 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '@/infrastructure/db/prisma.service';
 import { RegisterDto } from './dto/register.dto';
-import { UserPlan } from '@prisma/client';
+import { UserPlan, User } from '@prisma/client';
 import { AuthService } from '@/infrastructure/auth/auth.service';
+import { normalizeEmail } from '@/common/utils/email.util';
+import { buildDisplayName, DisplayNameInput } from '@/common/utils/display-name.util';
 
-export type UserPublicProfile = {
+export interface UserPublicProfile {
   id: string;
   displayName: string;
   avatarUrl: string | null;
-};
+}
 
 @Injectable()
 export class UserService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly auth: AuthService,
-  ) { }
-
-  private normalizeEmail(email: string) {
-    return email.trim().toLowerCase();
-  }
+  ) {}
 
   /**
    * Récupère un user par id ou lève une NotFoundException.
@@ -40,46 +38,12 @@ export class UserService {
    * Expose un profil public (id, displayName, avatarUrl) à partir d’un user Prisma.
    * Ça encapsule la logique d’affichage du nom.
    */
-  toPublicProfile(user: any): UserPublicProfile {
+  toPublicProfile(user: DisplayNameInput & { avatarUrl?: string | null }): UserPublicProfile {
     return {
-      id: user.id,
-      displayName: this.buildDisplayName(user),
+      id: user.id!,
+      displayName: buildDisplayName(user),
       avatarUrl: user.avatarUrl ?? null,
     };
-  }
-
-  /**
-   * Règle de construction du displayName :
-   * - displayName
-   * - sinon firstName + lastName
-   * - sinon email
-   * - sinon id
-   */
-  private buildDisplayName(user: any): string {
-    if (!user) return 'Inconnu';
-
-    if (user.displayName) {
-      return user.displayName as string;
-    }
-
-    const parts: string[] = [];
-
-    if (user.firstName) {
-      parts.push(user.firstName as string);
-    }
-    if (user.lastName) {
-      parts.push(user.lastName as string);
-    }
-
-    if (parts.length > 0) {
-      return parts.join(' ');
-    }
-
-    if (user.email) {
-      return user.email as string;
-    }
-
-    return user.id as string;
   }
 
   async register(dto: RegisterDto) {
@@ -87,7 +51,7 @@ export class UserService {
       throw new BadRequestException('Terms must be accepted');
     }
 
-    const email = dto.email.trim().toLowerCase();
+    const email = normalizeEmail(dto.email);
 
     const existing = await this.prisma.user.findUnique({
       where: { email },
@@ -100,29 +64,29 @@ export class UserService {
 
     const user = existing
       ? await this.prisma.user.update({
-        where: { id: existing.id },
-        data: {
-          isGuest: false,
-          firstName: dto.firstName.trim(),
-          lastName: dto.lastName?.trim() ?? null,
-          acceptedTermsAt: new Date(),
-          plan: UserPlan.FREE,
-          planSince: existing.plan === UserPlan.FREE ? null : undefined,
-        },
-        select: { id: true, email: true, plan: true, isGuest: true, firstName: true, lastName: true },
-      })
+          where: { id: existing.id },
+          data: {
+            isGuest: false,
+            firstName: dto.firstName.trim(),
+            lastName: dto.lastName?.trim() ?? null,
+            acceptedTermsAt: new Date(),
+            plan: UserPlan.FREE,
+            planSince: existing.plan === UserPlan.FREE ? null : undefined,
+          },
+          select: { id: true, email: true, plan: true, isGuest: true, firstName: true, lastName: true },
+        })
       : await this.prisma.user.create({
-        data: {
-          // eslint-disable-next-line prettier/prettier
+          data: {
+            // eslint-disable-next-line prettier/prettier
           email,
-          firstName: dto.firstName.trim(),
-          lastName: dto.lastName?.trim() ?? null,
-          isGuest: false,
-          acceptedTermsAt: new Date(),
-          plan: UserPlan.FREE,
-        },
-        select: { id: true, email: true, plan: true, isGuest: true, firstName: true, lastName: true },
-      });
+            firstName: dto.firstName.trim(),
+            lastName: dto.lastName?.trim() ?? null,
+            isGuest: false,
+            acceptedTermsAt: new Date(),
+            plan: UserPlan.FREE,
+          },
+          select: { id: true, email: true, plan: true, isGuest: true, firstName: true, lastName: true },
+        });
 
     const accessToken = this.auth.signForUser(user);
 
@@ -134,7 +98,7 @@ export class UserService {
   }
 
   async mergeGuestsByEmail(emailRaw: string, realUserId: string): Promise<MergeGuestsSummary> {
-    const email = this.normalizeEmail(emailRaw || '');
+    const email = normalizeEmail(emailRaw);
 
     if (!email) throw new BadRequestException('email is required');
     if (!realUserId) throw new BadRequestException('realUserId is required');
@@ -226,8 +190,8 @@ export class UserService {
   }
 }
 
-export type MergeGuestsSummary = {
+export interface MergeGuestsSummary {
   mergedGuestsCount: number;
   reassignedParticipantsCount: number;
   dedupedParticipantsCount: number;
-};
+}

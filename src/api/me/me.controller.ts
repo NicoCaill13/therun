@@ -11,6 +11,7 @@ import { NotificationDto } from '../notifications/dto/notification.dto';
 import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiTags, ApiUnauthorizedResponse } from '@nestjs/swagger';
 import { MeEventsListResponseDto } from './dto/me-events-list.response.dto';
 import { MeEventsQueryDto } from './dto/me-events-query.dto';
+import { MeProfileWithBenefitsResponseDto } from './dto/me-profile.dto';
 
 @ApiTags('Me')
 @ApiBearerAuth()
@@ -18,7 +19,15 @@ import { MeEventsQueryDto } from './dto/me-events-query.dto';
 @UseGuards(JwtAuthGuard)
 @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
 export class MeController {
-  constructor(private readonly meService: MeService) { }
+  constructor(private readonly meService: MeService) {}
+
+  @Get()
+  @ApiOperation({ summary: 'Récupérer mon profil avec les avantages du plan' })
+  @ApiOkResponse({ type: MeProfileWithBenefitsResponseDto })
+  @ApiUnauthorizedResponse({ description: 'Unauthorized' })
+  getProfile(@CurrentUser() user: JwtUser): Promise<MeProfileWithBenefitsResponseDto> {
+    return this.meService.getProfile(user);
+  }
 
   @Get('invitations')
   listInvitations(@CurrentUser() user: JwtUser, @Query() query: MeInvitationsQueryDto): Promise<MeInvitationsResponseDto> {

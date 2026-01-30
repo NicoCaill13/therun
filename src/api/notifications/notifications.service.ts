@@ -1,21 +1,25 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '@/infrastructure/db/prisma.service';
-import { NotificationType } from '@prisma/client';
+import { NotificationType, Notification } from '@prisma/client';
 import { NotificationDto } from './dto/notification.dto';
+import { normalizePagination, computePaginationMeta, PaginationInput } from '@/common/utils/pagination.util';
+import { toIsoString } from '@/common/utils/date.util';
 
-type CreateNotificationInput = {
+import { Prisma } from '@prisma/client';
+
+export interface CreateNotificationInput {
   userId: string;
   type: NotificationType;
   title: string;
   body: string;
   eventId?: string | null;
-  data?: any;
+  data?: Prisma.InputJsonValue;
   dedupKey?: string | null;
-};
+}
 
 @Injectable()
 export class NotificationsService {
-  constructor(private readonly prisma: PrismaService) { }
+  constructor(private readonly prisma: PrismaService) {}
 
   async createOne(input: CreateNotificationInput): Promise<NotificationDto> {
     const notif = await this.prisma.notification.create({
@@ -70,11 +74,10 @@ export class NotificationsService {
     return this.toDto(updated);
   }
 
-  async listForUser(userId: string, opts: { page?: number; pageSize?: number; unreadOnly?: boolean }) {
-    const page = opts.page ?? 1;
-    const pageSize = opts.pageSize ?? 20;
+  async listForUser(userId: string, opts: PaginationInput & { unreadOnly?: boolean }) {
+    const pagination = normalizePagination(opts);
 
-    const where: any = {
+    const where = {
       userId,
       ...(opts.unreadOnly ? { readAt: null } : {}),
     };
@@ -85,33 +88,30 @@ export class NotificationsService {
       this.prisma.notification.findMany({
         where,
         orderBy: { createdAt: 'desc' },
-        skip: (page - 1) * pageSize,
-        take: pageSize,
+        skip: pagination.skip,
+        take: pagination.pageSize,
       }),
     ]);
 
-    const totalPages = totalCount === 0 ? 0 : Math.ceil(totalCount / pageSize);
+    const meta = computePaginationMeta(totalCount, pagination);
 
     return {
       items: rows.map((n) => this.toDto(n)),
-      page,
-      pageSize,
-      totalCount,
-      totalPages,
+      ...meta,
       unreadCount,
     };
   }
 
-  private toDto(n: any): NotificationDto {
+  private toDto(notification: Notification): NotificationDto {
     return {
-      id: n.id,
-      type: n.type,
-      title: n.title,
-      body: n.body,
-      eventId: n.eventId ?? null,
-      data: n.data ?? null,
-      createdAt: n.createdAt.toISOString(),
-      readAt: n.readAt ? n.readAt.toISOString() : null,
+      id: notification.id,
+      type: notification.type,
+      title: notification.title,
+      body: notification.body,
+      eventId: notification.eventId ?? null,
+      data: notification.data ?? null,
+      createdAt: toIsoString(notification.createdAt)!,
+      readAt: toIsoString(notification.readAt),
     };
   }
 }

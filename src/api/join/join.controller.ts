@@ -8,7 +8,7 @@ import { JoinParticipateResponseDto } from './dto/join-participate-response.dto'
 
 @Controller('join')
 export class JoinController {
-  constructor(private readonly joinService: JoinService) { }
+  constructor(private readonly joinService: JoinService) {}
 
   @Get(':eventCode')
   resolve(@Param('eventCode') eventCode: string): Promise<JoinEventSummaryDto> {

@@ -19,7 +19,7 @@ class RegisterResponseDto {
 @ApiTags('Auth')
 @Controller('user')
 export class UserController {
-  constructor(private readonly userService: UserService) { }
+  constructor(private readonly userService: UserService) {}
 
   @Post('register')
   @ApiOperation({ summary: 'Créer un compte complet (fusionne un Guest si email identique)' })

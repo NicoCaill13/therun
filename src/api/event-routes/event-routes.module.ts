@@ -8,4 +8,4 @@ import { RoutesModule } from '../routes/routes.module';
   providers: [EventRoutesService, PrismaService],
   exports: [EventRoutesService],
 })
-export class EventRoutesModule { }
+export class EventRoutesModule {}

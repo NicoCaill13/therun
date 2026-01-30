@@ -8,4 +8,4 @@ import { PrismaService } from '@/infrastructure/db/prisma.service';
   providers: [RoutesService, PrismaService],
   exports: [RoutesService],
 })
-export class RoutesModule { }
+export class RoutesModule {}
