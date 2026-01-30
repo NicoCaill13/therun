@@ -3,25 +3,21 @@ import { Injectable, ForbiddenException, NotFoundException, BadRequestException 
 import { PrismaService } from '@/infrastructure/db/prisma.service';
 import { CreateEventRouteDto, EventRouteMode } from './dto/create-event-route.dto';
 import { EventRouteDto } from './dto/event-route.dto';
-import { UserPlan } from '@prisma/client';
+import { UserPlan, EventRoute } from '@prisma/client';
 import { JwtUser } from '@/types/jwt';
 import { RoutesService } from '../routes/routes.service';
+import { findEventOrThrow, findEventAsOrganiserOrThrow } from '@/common/helpers/event-access.helper';
 
 @Injectable()
 export class EventRoutesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly routesService: RoutesService,
-  ) { }
+  ) {}
 
   async listByEvent(eventId: string): Promise<EventRouteDto[]> {
-    const event = await this.prisma.event.findUnique({
-      where: { id: eventId },
-    });
+    await findEventOrThrow(this.prisma, eventId);
 
-    if (!event) {
-      throw new NotFoundException('Event not found');
-    }
     const routes = await this.prisma.eventRoute.findMany({
       where: { eventId },
       orderBy: { createdAt: 'asc' },
@@ -31,17 +27,7 @@ export class EventRoutesService {
   }
 
   async addRouteToEvent(eventId: string, user: JwtUser, dto: CreateEventRouteDto): Promise<EventRouteDto> {
-    const event = await this.prisma.event.findUnique({
-      where: { id: eventId },
-    });
-
-    if (!event) {
-      throw new NotFoundException('Event not found');
-    }
-
-    if (event.organiserId !== user.userId) {
-      throw new ForbiddenException('Only organiser can manage routes for this event');
-    }
+    await findEventAsOrganiserOrThrow(this.prisma, eventId, user.userId, undefined, 'Only organiser can manage routes for this event');
 
     switch (dto.mode) {
       case EventRouteMode.NEW:
@@ -164,7 +150,7 @@ export class EventRoutesService {
     return this.toDto(eventRoute);
   }
 
-  private toDto(entity: any): EventRouteDto {
+  private toDto(entity: EventRoute): EventRouteDto {
     return {
       id: entity.id,
       eventId: entity.eventId,

@@ -6,7 +6,7 @@ import { JoinParticipateResponseDto } from './dto/join-participate-response.dto'
 
 @Injectable()
 export class JoinService {
-  constructor(private readonly prisma: PrismaService) { }
+  constructor(private readonly prisma: PrismaService) {}
 
   async resolveEventByCode(eventCode: string): Promise<JoinEventSummaryDto> {
     const code = eventCode.trim();
@@ -67,8 +67,8 @@ export class JoinService {
         participantId: updated.id,
         eventId: updated.eventId,
         userId: updated.userId!,
-        role: updated.role as any,
-        status: 'GOING',
+        role: updated.role,
+        status: 'GOING' as const,
       };
     }
 
@@ -85,8 +85,8 @@ export class JoinService {
       participantId: created.id,
       eventId: created.eventId,
       userId: created.userId!,
-      role: created.role as any,
-      status: 'GOING',
+      role: created.role,
+      status: 'GOING' as const,
     };
   }
 }

@@ -6,4 +6,4 @@ import { JoinService } from './join.service';
   controllers: [JoinController],
   providers: [JoinService],
 })
-export class JoinModule { }
+export class JoinModule {}

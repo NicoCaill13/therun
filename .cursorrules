@@ -1,0 +1,364 @@
+# Cursor AI Rules - The Run
+
+## Project Overview
+This is a NestJS backend API for a dental practice management system, using:
+- **Framework**: NestJS 11+ 
+- **Database**: PostgreSQL with Prisma 
+- **Testing**: Jest
+- **Language**: TypeScript (ESNext modules)
+
+## Architecture Patterns
+
+### Module Structure
+- Use NestJS modular architecture
+- Each feature module should be self-contained in `src/modules/`
+- Import new files in parent module (`*.module.ts`)
+
+### Dependency Injection
+- **Always** use constructor injection for services, repositories, and external dependencies
+- Use `@Injectable()` decorator for all services
+- Use plain classes only for utilities and helpers (no DI needed)
+
+### Controllers
+- Controllers handle **only** HTTP layer concerns
+- Use DTOs for all input/output validation
+- **Never** call repositories directly from controllers
+- Call use-case services or domain services instead
+- Use proper HTTP status codes and decorators (`@Get()`, `@Post()`, etc.)
+
+### Services & Use Cases
+- Domain services encapsulate business logic
+- **No direct database access** in domain services
+- Use commands/queries pattern for database operations
+- Use-cases orchestrate domain logic and data access
+
+### Domain Objects & Validation
+- Use `class-validator` decorators for all DTOs
+- Validate at the boundaries (controllers, DTOs)
+- Use `class-transformer` for serialization when needed
+
+### Repositories
+- Implement domain interfaces (repository pattern)
+- Export repository injection tokens as constants (e.g., `export const REPOSITORY_KEY`)
+- Type repositories with model property
+- **Return only domain objects**, never expose Prisma types
+- Keep Prisma types internal to repository implementations
+- Use Prisma client from centralized re-export: `@/prisma/client`
+
+### Mappers
+- Use dependency injection for mapper classes
+- **Map all properties** explicitly (avoid spread operators where possible)
+- Return validated domain instances
+- Keep mapping logic separate from business logic
+
+## Prisma Guidelines
+
+### Client Import
+```typescript
+// ✅ CORRECT - Use centralized re-export
+import { PrismaClient, User, Treatment } from '@/prisma/client';
+
+// ❌ WRONG - Don't import from generated path
+import { PrismaClient } from '../../prisma/generated/prisma/client';
+```
+
+### Schema
+- Located at `prisma/schema.prisma`
+- Generated client at `prisma/generated/prisma/`
+- Use driver adapter (`@prisma/adapter-pg`) with pg.Pool for PostgreSQL
+- Configuration in `prisma.config.ts`
+
+### Database Operations
+- Use transactions for multi-step operations
+- Handle errors with proper Prisma error types
+- Use `select` to limit fields returned
+- Index frequently queried fields
+
+## Code Style & Best Practices
+
+### TypeScript
+- Use strict TypeScript configuration
+- Module system: ESNext with bundler resolution
+- Target: ES2023
+- Enable `esModuleInterop` and `allowSyntheticDefaultImports`
+- Path aliases: `@/` for `src/`
+
+### Naming Conventions
+- Files: kebab-case (e.g., `user-repository.ts`)
+- Classes: PascalCase (e.g., `UserService`)
+- Interfaces: PascalCase with 'I' prefix optional (e.g., `UserRepository` or `IUserRepository`)
+- Methods/Variables: camelCase (e.g., `getUserById`)
+- Constants: UPPER_SNAKE_CASE (e.g., `USER_REPOSITORY_TOKEN`)
+- DTOs: `CreateXxxDto`, `UpdateXxxDto`, `XxxResponseDto`
+
+### Async/Await
+- Always use async/await over raw Promises
+- Handle errors with try/catch or let them bubble up
+- Use `Promise.all()` for parallel operations
+
+### Error Handling
+- Use NestJS built-in exceptions (`BadRequestException`, `NotFoundException`, etc.)
+- Create custom exceptions when needed in `src/common/exceptions/`
+- Log errors appropriately
+
+## Testing
+
+### Unit Tests
+- Use Jest for unit tests
+- File naming: `*.spec.ts`
+- Import all required modules in test setup
+- **No database mocking** for integration tests
+- Use real database with test data
+- Clean up after tests
+
+### E2E Tests
+- Located in `test/` directory
+- File naming: `*.e2e-spec.test.ts`
+- Use actual database (not mocked)
+- Configuration in `test/jest-e2e.json`
+- Global timeout: 30000ms (configured in `bunfig.toml`)
+
+### Test Structure
+```typescript
+describe('S6.1.3 — mergeGuestsByEmail (e2e)', () => {
+  let app: INestApplication;
+  let prisma: PrismaService;
+  let users: UserService;
+
+  beforeAll(async () => {
+    const ctx = await createE2eApp();
+    app = ctx.app;
+    prisma = ctx.prisma;
+    users = app.get(UserService);
+  });
+
+  afterAll(async () => {
+    await app.close();
+  });
+
+  beforeEach(async () => {
+    await clearAll(prisma);
+  });
+
+  
+  it('should do something', async () => {
+    // Arrange
+    // Act
+    // Assert
+  });
+});
+```
+
+## Database Migrations
+
+### Running Migrations
+- Scripts located in `scripts/migrations/`
+- Use Prisma client with driver adapter
+- Log progress for long-running migrations
+- Use transactions when possible
+
+### Seeding
+- Seeds located in `prisma/seed/`
+- Entry point: `prisma/seed/index.ts`
+- Use centralized Prisma client: `prisma/seed/prisma-client.ts`
+- Assume empty database
+- Inject Prisma client as service parameter
+
+## Environment Variables
+- Use `@nestjs/config` for configuration
+- Validate environment variables with Joi schemas
+- Configuration modules in `src/config/`
+- Required vars: `DATABASE_URL`
+
+## Git & Commits
+- Use conventional commits (enforced by commitlint)
+- Format: `type(scope): subject`
+- Types: `feat`, `fix`, `docs`, `style`, `refactor`, `test`, `chore`
+- Run linters before commit (husky + lint-staged)
+- Prettier for code formatting
+- ESLint for code quality
+
+## Performance
+- Use database indexes for frequently queried fields
+- Implement caching with Redis for expensive operations
+- Use select to limit returned fields
+- Batch operations when possible
+- Monitor query performance
+
+## Security
+- Validate all user input with class-validator
+- Use Keycloak for authentication/authorization
+- Sanitize data before database operations
+- Use parameterized queries (Prisma handles this)
+- Implement proper CORS configuration
+- Use Helmet for security headers
+
+## Don't
+- ❌ Don't use `any` type unless absolutely necessary
+- ❌ Don't use implicitly 'any' type
+- ❌ Don't expose Prisma types in controllers or DTOs
+- ❌ Don't access database directly from controllers
+- ❌ Don't mock database in integration tests
+- ❌ Don't commit generated files (`prisma/generated/`)
+- ❌ Don't use relative imports for common modules (use path aliases)
+- ❌ Don't skip validation on DTOs
+- ❌ Don't forget to handle errors properly
+
+## Do
+- ✅ Use dependency injection everywhere
+- ✅ Follow NestJS best practices and patterns
+- ✅ Write tests for new features
+- ✅ Use TypeScript types extensively
+- ✅ Keep business logic in domain services
+- ✅ Use DTOs for all API boundaries
+- ✅ Document complex logic with comments
+- ✅ Use Prisma transactions for multi-step operations
+- ✅ Return domain objects from repositories
+- ✅ Centralize Prisma client imports
+
+## Common Patterns
+
+### Controller Example
+```typescript
+@Controller('users')
+export class UserController {
+  constructor(private readonly userService: UserService) {}
+  
+  @Get(':id')
+  async findOne(@Param('id', ParseIntPipe) id: number): Promise<UserResponseDto> {
+    return this.userService.findOne(id);
+  }
+  
+  @Post()
+  async create(@Body() createUserDto: CreateUserDto): Promise<UserResponseDto> {
+    return this.userService.create(createUserDto);
+  }
+}
+```
+
+### Service Example
+```typescript
+@Injectable()
+export class UserService {
+  constructor(
+    @Inject(USER_REPOSITORY) private readonly userRepository: UserRepository,
+  ) {}
+  
+  async findOne(id: number): Promise<User> {
+    const user = await this.userRepository.findById(id);
+    if (!user) {
+      throw new NotFoundException(`User with ID ${id} not found`);
+    }
+    return user;
+  }
+}
+```
+
+### Repository Example
+```typescript
+export const USER_REPOSITORY = Symbol('USER_REPOSITORY');
+
+@Injectable()
+export class PrismaUserRepository implements UserRepository {
+  constructor(private readonly prisma: PrismaService) {}
+  
+  async findById(id: number): Promise<User | null> {
+    const user = await this.prisma.user.findUnique({
+      where: { id },
+      select: { id: true, email: true, firstName: true, lastName: true },
+    });
+    
+    if (!user) return null;
+    
+    return this.mapper.toDomain(user);
+  }
+}
+```
+
+## File Structure Reference
+```
+src/
+├── app.module.ts           # Root module
+├── main.ts                 # Application entry point
+├── common/                 # Shared utilities, guards, filters
+├── config/                 # Configuration modules
+├── modules/               # Feature modules
+│   └── api/
+│       └── user/
+│           ├── user.module.ts
+│           ├── user.controller.ts
+│           ├── user.service.ts
+│           ├── dto/
+│           ├── entities/
+│           └── repositories/
+├── prisma/                # Prisma service and utilities
+└── utils/                 # Helper functions
+```
+# CONTEXTE TECHNIQUE DU PROJET
+- Frameworks : NestJS (Backend) et NextJS (Frontend) et Expo(Mobile App).
+- Respecte les patterns officiels de chaque framework (Modules/Services pour Nest, App Router/Server Components pour Next).
+
+# RÈGLES SPÉCIFIQUES
+- Utilise le typage TypeScript strict pour toutes les interfaces et DTOs.
+- Dans NestJS : Priorise l'injection de dépendances et les décorateurs standards.
+- Dans NextJS : Favorise les Server Components par défaut, sauf si l'interactivité client est requise.
+
+# ACTIONS MCP AUTOMATISÉES
+- @Asana : Avant de commencer une tâche, cherche le ticket correspondant pour t'imprégner des specs.
+- @Asana : Une fois une feature terminée, propose de mettre à jour le statut du ticket.
+- @GitHub : Utilise `create_pull_request` après avoir poussé les commits, en suivant le format : "feat(scope): description" ou "fix(scope): description".
+
+
+# STANDARDS DE DÉVELOPPEMENT
+- Stack : Full JavaScript avec surcouche TypeScript stricte.
+- Principes : Applique rigoureusement SOLID, KISS et DRY.
+- Qualité : Le code doit être propre, factorisé et hautement maintenable.
+- Style : Orienté Objet (OO) pour la structure, fonctions fléchées pour la logique interne.
+- Format : Indentation de 2 espaces.
+
+# WORKFLOW & SÉCURITÉ
+- Dépendances : INTERDICTION d'installer des dépendances seul. Propose la commande `npm install` ou `yarn add` dans le chat.
+- GitHub (MCP) : Après chaque push réussi, vérifie si une PR existe. Si non, propose ou crée la Pull Request avec un résumé des changements.
+- OS : Linux. Toutes les commandes terminal doivent être compatibles Bash.
+
+# GESTION DES BRANCHES & GIT
+- INTERDICTION de travailler ou de commit sur les branches `master`, `main` ou `develop`.
+- Si je suis sur une de ces branches, refuse d'écrire du code et demande-moi de créer une nouvelle branche.
+
+
+
+# RIGUEUR DE TESTS
+- AUCUN ajout de code ne doit être fait sans son test correspondant (Jest pour le Backend, Testing Library/Vitest pour le Frontend).
+- Il faut obligatoirement créer des jeux de test pour valider les developements
+- Si tu crées un service NestJS, crée simultanément le fichier `.spec.ts` avec une couverture des cas limites identifiés dans l'ancien code.
+
+
+# STANDARDS DE DÉVELOPPEMENT
+- Stack : Full JavaScript / TypeScript strict (NestJS en Backend, NextJS en Frontend).
+- Principes : Application rigoureuse de SOLID, KISS, et DRY. Code propre et factorisé.
+- Style : Orienté Objet (OO) pour la structure, fonctions fléchées pour la logique interne.
+- Format : Indentation de 2 espaces.
+- Tests : AUCUN code sans test. (Jest pour le Backend, Vitest/Testing Library pour le Frontend). Couverture des cas limites identifiés dans l'ancienne codebase.
+
+
+# PROTOCOLE DE COMMANDES : ANALYSE VS EXÉCUTION
+
+## 1. Commande : ANALYSE
+- MISSION : Analyse large de la codebase actuelle et ancienne (@AncienProjet) pour fournir du contexte, identifier les dépendances et prévenir les régressions.
+- LIVRABLE : Génération systématique d'un rapport technique Markdown dans le répertoire `./docs/`.
+- CONTRAINTE : AUCUNE modification de code source.
+
+## 2. Commande : EXÉCUTION
+- MISSION : Implémentation technique strictement limitée au périmètre de la tâche Asana (ID de branche).
+- MÉTHODOLOGIE : Extraire le scope via MCP Asana (tâche + parent) dès détection de l'ID dans la branche.
+- TOUJOURS prendre en compte les specs présentes dans le répertoire `./docs`
+- TOUJOURS prendre en compte le schema présent dans `./prisma/schema.prisma`
+
+# DOCUMENTATION & CLÔTURE
+- DOCUMENTATION MÉTIER : À la fin de chaque feature, générer `./business/{asana_task_id}-business-summary.md`.
+- CONTENU : Résumé clair, net, sans jargon technique, orienté bénéfices business et changements utilisateurs.
+
+# SÉCURITÉ & DÉPENDANCES
+- Dépendances : Interdiction d'installer des packages seul. Proposer la commande dans le chat.
+- OS : Commandes exclusivement compatibles Linux Bash.
+

@@ -2,29 +2,20 @@ import { Injectable, BadRequestException, ForbiddenException, NotFoundException 
 import { PrismaService } from '@/infrastructure/db/prisma.service';
 import { CreateRouteDto } from './dto/create-route.dto';
 import { RouteDto } from './dto/route.dto';
-import { UserPlan } from '@prisma/client';
+import { UserPlan, Route } from '@prisma/client';
 import { computeCenterAndRadius, computeDistanceMeters, decodePolyline } from '@/utils/polyline.util';
 import { JwtUser } from '@/types/jwt';
 import { RouteListResponseDto } from './dto/route-list.dto';
 import { ListRoutesQueryDto } from './dto/list-routes-query.dto';
 import { SuggestRoutesQueryDto } from './dto/suggest-routes-query.dto';
 import { SuggestRoutesResponseDto } from './dto/suggest-routes-response.dto';
-
-function metersToLatDelta(radiusMeters: number) {
-  return radiusMeters / 111_320;
-}
-function metersToLngDelta(radiusMeters: number, lat: number) {
-  const rad = (lat * Math.PI) / 180;
-  return radiusMeters / (111_320 * Math.cos(rad));
-}
-
-const DEFAULT_PAGE = 1;
-const DEFAULT_PAGE_SIZE = 20;
-const MAX_PAGE_SIZE = 100;
+import { metersToLatDelta, metersToLngDelta, computeBoundingBox, haversineMeters } from '@/common/utils/geo.util';
+import { normalizePagination, computePaginationMeta } from '@/common/utils/pagination.util';
+import { DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE } from '@/common/constants/pagination.constants';
 
 @Injectable()
 export class RoutesService {
-  constructor(private readonly prisma: PrismaService) { }
+  constructor(private readonly prisma: PrismaService) {}
 
   async createRoute(user: JwtUser, dto: CreateRouteDto): Promise<RouteDto> {
     if (!dto.encodedPolyline) {
@@ -75,7 +66,7 @@ export class RoutesService {
     return this.toDto(route);
   }
 
-  private toDto(route: any): RouteDto {
+  private toDto(route: Route): RouteDto {
     return {
       id: route.id,
       ownerId: route.ownerId,
@@ -93,25 +84,27 @@ export class RoutesService {
 
   async listRoutes(user: JwtUser, query: ListRoutesQueryDto): Promise<RouteListResponseDto> {
     const hasGeoFilter = typeof query.lat === 'number' || typeof query.lng === 'number' || typeof query.radiusMeters === 'number';
-
     const hasDistanceFilter = typeof query.distanceMin === 'number' || typeof query.distanceMax === 'number';
-
     const hasAnySearchFilter = hasGeoFilter || hasDistanceFilter;
 
     if (!query.createdBy && !hasAnySearchFilter) {
       throw new BadRequestException(['createdBy is required']);
     }
 
-    let page = query.page ?? DEFAULT_PAGE;
-    let pageSize = query.pageSize ?? DEFAULT_PAGE_SIZE;
-    if (pageSize >= MAX_PAGE_SIZE) pageSize = DEFAULT_PAGE_SIZE;
-    if (pageSize < 1) pageSize = DEFAULT_PAGE_SIZE;
+    const pagination = normalizePagination(query);
 
-    if (page < 1) page = DEFAULT_PAGE;
+    // Enforce MAX_PAGE_SIZE for this endpoint (routes endpoint has stricter validation)
+    if (pagination.pageSize >= MAX_PAGE_SIZE) {
+      pagination.pageSize = DEFAULT_PAGE_SIZE;
+      pagination.skip = (pagination.page - 1) * pagination.pageSize;
+    }
 
-    const skip = (page - 1) * pageSize;
-
-    const where: any = {};
+    const where: {
+      ownerId?: string;
+      distanceMeters?: { gte?: number; lte?: number };
+      centerLat?: { gte: number; lte: number };
+      centerLng?: { gte: number; lte: number };
+    } = {};
 
     const restrictToMe = user.plan !== UserPlan.PREMIUM || query.createdBy === 'me';
     if (restrictToMe) {
@@ -142,20 +135,17 @@ export class RoutesService {
       this.prisma.route.findMany({
         where,
         orderBy: { createdAt: 'desc' },
-        skip,
-        take: pageSize,
+        skip: pagination.skip,
+        take: pagination.pageSize,
       }),
     ]);
 
-    const totalPages = totalCount === 0 ? 0 : Math.ceil(totalCount / pageSize);
+    const meta = computePaginationMeta(totalCount, pagination);
 
     return {
       items: routes.map((r) => this.toDto(r)),
-      page,
-      pageSize,
-      totalCount,
-      totalPages,
-    } as any;
+      ...meta,
+    };
   }
 
   async suggestRoutes(user: JwtUser, q: SuggestRoutesQueryDto): Promise<SuggestRoutesResponseDto> {
@@ -167,20 +157,20 @@ export class RoutesService {
     const maxDistance = Math.ceil(q.distanceMeters * (1 + tolerancePct));
 
     // Bounding box (perf): réduit le scope avant calcul haversine
-    const { latMin, latMax, lngMin, lngMax } = this.computeBoundingBox(q.lat, q.lng, radiusMeters);
+    const bbox = computeBoundingBox(q.lat, q.lng, radiusMeters);
 
     // On prend plus large que limit pour trier ensuite
     const prefetch = Math.min(100, Math.max(20, limit * 10));
 
     const candidates = await this.prisma.route.findMany({
       where: {
-        ownerId: user.userId, // MVP: uniquement les routes du user
+        ownerId: user.userId,
         distanceMeters: { gte: minDistance, lte: maxDistance },
-        centerLat: { gte: latMin, lte: latMax },
-        centerLng: { gte: lngMin, lte: lngMax },
+        centerLat: { gte: bbox.latMin, lte: bbox.latMax },
+        centerLng: { gte: bbox.lngMin, lte: bbox.lngMax },
       },
       take: prefetch,
-      orderBy: { createdAt: 'desc' }, // stable; tri pertinence ensuite en JS
+      orderBy: { createdAt: 'desc' },
     });
 
     const scored = candidates
@@ -188,15 +178,9 @@ export class RoutesService {
         const distanceFromStartMeters = haversineMeters(q.lat, q.lng, r.centerLat, r.centerLng);
         const distanceDelta = Math.abs(r.distanceMeters - q.distanceMeters);
 
-        return {
-          r,
-          distanceFromStartMeters,
-          distanceDelta,
-        };
+        return { route: r, distanceFromStartMeters, distanceDelta };
       })
-      // re-check rayon réel (bounding box peut inclure des points hors cercle)
       .filter((x) => x.distanceFromStartMeters <= radiusMeters)
-      // tri pertinence: d'abord proximité start, puis proximité distance
       .sort((a, b) => {
         if (a.distanceFromStartMeters !== b.distanceFromStartMeters) {
           return a.distanceFromStartMeters - b.distanceFromStartMeters;
@@ -206,46 +190,17 @@ export class RoutesService {
       .slice(0, limit);
 
     return {
-      items: scored.map(({ r, distanceFromStartMeters }) => ({
-        routeId: r.id,
-        name: r.name,
-        distanceMeters: r.distanceMeters,
-        type: r.type ?? null,
-        centerLat: r.centerLat,
-        centerLng: r.centerLng,
-        radiusMeters: r.radiusMeters,
-        encodedPolyline: r.encodedPolyline,
+      items: scored.map(({ route, distanceFromStartMeters }) => ({
+        routeId: route.id,
+        name: route.name,
+        distanceMeters: route.distanceMeters,
+        type: route.type ?? null,
+        centerLat: route.centerLat,
+        centerLng: route.centerLng,
+        radiusMeters: route.radiusMeters,
+        encodedPolyline: route.encodedPolyline,
         distanceFromStartMeters,
       })),
     };
   }
-
-  private computeBoundingBox(lat: number, lng: number, radiusMeters: number) {
-    // approximations suffisantes pour 0–10km
-    const metersPerDegLat = 111_320;
-    const latDelta = radiusMeters / metersPerDegLat;
-    const lngDelta = radiusMeters / (metersPerDegLat * Math.cos((lat * Math.PI) / 180));
-
-    return {
-      latMin: lat - latDelta,
-      latMax: lat + latDelta,
-      lngMin: lng - lngDelta,
-      lngMax: lng + lngDelta,
-    };
-  }
-}
-
-function haversineMeters(lat1: number, lon1: number, lat2: number, lon2: number) {
-  const R = 6371e3;
-  const toRad = (d: number) => (d * Math.PI) / 180;
-
-  const φ1 = toRad(lat1);
-  const φ2 = toRad(lat2);
-  const Δφ = toRad(lat2 - lat1);
-  const Δλ = toRad(lon2 - lon1);
-
-  const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
-
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c;
 }

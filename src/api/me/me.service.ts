@@ -1,6 +1,6 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '@/infrastructure/db/prisma.service';
-import { EventParticipantStatus, EventStatus } from '@prisma/client';
+import { EventParticipantStatus, EventStatus, UserPlan } from '@prisma/client';
 import { MeInvitationsQueryDto } from './dto/me-invitations-query.dto';
 import { MeInvitationsResponseDto } from './dto/me-invitations-response.dto';
 import { JwtUser } from '@/types/jwt';
@@ -10,20 +10,75 @@ import { MyNotificationsResponseDto } from '../notifications/dto/my-notification
 import { NotificationDto } from '../notifications/dto/notification.dto';
 import { MeEventsQueryDto } from './dto/me-events-query.dto';
 import { MeEventsListResponseDto } from './dto/me-events-list.response.dto';
-
-const DEFAULT_PAGE = 1;
-const DEFAULT_PAGE_SIZE = 20;
+import { MeProfileWithBenefitsResponseDto, PlanBenefitsDto } from './dto/me-profile.dto';
+import { buildDisplayName } from '@/common/utils/display-name.util';
+import { normalizePagination, computePaginationMeta } from '@/common/utils/pagination.util';
 
 @Injectable()
 export class MeService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly notificationsService: NotificationsService,
-  ) { }
+  ) {}
+  async getProfile(user: JwtUser): Promise<MeProfileWithBenefitsResponseDto> {
+    const dbUser = await this.prisma.user.findUnique({
+      where: { id: user.userId },
+      select: {
+        id: true,
+        email: true,
+        firstName: true,
+        lastName: true,
+        isGuest: true,
+        plan: true,
+        planSince: true,
+        planUntil: true,
+        acceptedTermsAt: true,
+        createdAt: true,
+      },
+    });
+
+    if (!dbUser) {
+      throw new NotFoundException('User not found');
+    }
+
+    const displayName = buildDisplayName(dbUser);
+    const planBenefits = this.getPlanBenefits(dbUser.plan);
+
+    return {
+      id: dbUser.id,
+      email: dbUser.email,
+      firstName: dbUser.firstName,
+      lastName: dbUser.lastName,
+      displayName,
+      isGuest: dbUser.isGuest,
+      plan: dbUser.plan,
+      planSince: dbUser.planSince,
+      planUntil: dbUser.planUntil,
+      acceptedTermsAt: dbUser.acceptedTermsAt,
+      createdAt: dbUser.createdAt,
+      planBenefits,
+    };
+  }
+
+  private getPlanBenefits(plan: UserPlan): PlanBenefitsDto {
+    if (plan === UserPlan.PREMIUM) {
+      return {
+        maxActiveEventsPerWeek: -1, // unlimited
+        globalRouteLibraryAccess: true,
+        description: 'Tu es sur The Run Premium : événements actifs illimités, accès à la bibliothèque globale de parcours.',
+      };
+    }
+
+    // FREE plan
+    return {
+      maxActiveEventsPerWeek: 1,
+      globalRouteLibraryAccess: false,
+      description: 'Tu es sur The Run Free : 1 événement actif par semaine, accès limité à tes propres parcours.',
+    };
+  }
 
   async listInvitations(userId: string, q: MeInvitationsQueryDto): Promise<MeInvitationsResponseDto> {
-    const page = q.page ?? 1;
-    const pageSize = q.pageSize ?? 20;
+    const pagination = normalizePagination(q);
 
     const where = {
       userId,
@@ -46,19 +101,19 @@ export class MeService {
           },
         },
         orderBy: { event: { startDateTime: 'asc' } },
-        skip: (page - 1) * pageSize,
-        take: pageSize,
+        skip: pagination.skip,
+        take: pagination.pageSize,
       }),
     ]);
 
-    const totalPages = totalCount === 0 ? 0 : Math.ceil(totalCount / pageSize);
+    const meta = computePaginationMeta(totalCount, pagination);
 
     return {
       items: rows.map((p) => ({
         participantId: p.id,
         eventId: p.eventId,
-        role: p.role as any,
-        status: 'INVITED',
+        role: p.role as 'PARTICIPANT' | 'ENCADRANT',
+        status: 'INVITED' as const,
         eventTitle: p.event.title,
         startDateTime: p.event.startDateTime,
         locationName: p.event.locationName ?? null,
@@ -66,10 +121,7 @@ export class MeService {
         organiserFirstName: p.event.organiser.firstName,
         organiserLastName: p.event.organiser.lastName ?? null,
       })),
-      page,
-      pageSize,
-      totalCount,
-      totalPages,
+      ...meta,
     };
   }
 
@@ -81,17 +133,13 @@ export class MeService {
     return this.notificationsService.markAsRead(user.userId, notificationId);
   }
   async listMyEvents(user: JwtUser, query: MeEventsQueryDto): Promise<MeEventsListResponseDto> {
-    const page = query.page ?? DEFAULT_PAGE;
-    const pageSize = query.pageSize ?? DEFAULT_PAGE_SIZE;
-    const skip = (page - 1) * pageSize;
+    const pagination = normalizePagination(query);
     const userId = user.userId;
-
     const now = new Date();
 
-    const whereBase: any = { organiserId: userId };
-
-    let where: any = whereBase;
-    let orderBy: any = { startDateTime: 'asc' };
+    const whereBase = { organiserId: userId };
+    let where: typeof whereBase & { status?: EventStatus; startDateTime?: { gt: Date } } = whereBase;
+    let orderBy: { startDateTime: 'asc' | 'desc' } = { startDateTime: 'asc' };
 
     if (query.scope === 'future') {
       where = {
@@ -100,13 +148,10 @@ export class MeService {
         startDateTime: { gt: now },
       };
       orderBy = { startDateTime: 'asc' };
-    }
-
-    if (query.scope === 'past') {
+    } else if (query.scope === 'past') {
       where = { ...whereBase, status: EventStatus.COMPLETED };
       orderBy = { startDateTime: 'desc' };
-    }
-    if (query.scope === 'cancelled') {
+    } else if (query.scope === 'cancelled') {
       where = { ...whereBase, status: EventStatus.CANCELLED };
       orderBy = { startDateTime: 'desc' };
     }
@@ -116,8 +161,8 @@ export class MeService {
       this.prisma.event.findMany({
         where,
         orderBy,
-        skip,
-        take: pageSize,
+        skip: pagination.skip,
+        take: pagination.pageSize,
         select: {
           id: true,
           title: true,
@@ -125,7 +170,7 @@ export class MeService {
           status: true,
           locationName: true,
           locationAddress: true,
-          goingCountAtCompletion: true, // ✅ snapshot (S7.1.1)
+          goingCountAtCompletion: true,
         },
       }),
     ]);
@@ -134,18 +179,16 @@ export class MeService {
 
     const goingCounts = eventIds.length
       ? await this.prisma.eventParticipant.groupBy({
-        by: ['eventId'],
-        where: { eventId: { in: eventIds }, status: EventParticipantStatus.GOING },
-        _count: { _all: true },
-      })
+          by: ['eventId'],
+          where: { eventId: { in: eventIds }, status: EventParticipantStatus.GOING },
+          _count: { _all: true },
+        })
       : [];
 
     const goingByEventId = new Map<string, number>(goingCounts.map((x) => [x.eventId, x._count._all]));
 
     const items = events.map((e) => {
       const fallback = goingByEventId.get(e.id) ?? 0;
-
-      // ✅ règle : pour COMPLETED, utiliser snapshot si présent
       const goingCount = e.status === EventStatus.COMPLETED && e.goingCountAtCompletion != null ? e.goingCountAtCompletion : fallback;
 
       return {
@@ -158,6 +201,7 @@ export class MeService {
         goingCount,
       };
     });
-    return { items, page, pageSize, total };
+
+    return { items, page: pagination.page, pageSize: pagination.pageSize, total };
   }
 }

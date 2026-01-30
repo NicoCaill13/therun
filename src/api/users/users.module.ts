@@ -10,4 +10,4 @@ import { AuthModule } from '@/infrastructure/auth/auth.module';
   providers: [UserService, PrismaService],
   exports: [UserService],
 })
-export class UsersModule { }
+export class UsersModule {}

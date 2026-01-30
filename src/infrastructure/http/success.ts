@@ -4,7 +4,7 @@ import { Reflector } from '@nestjs/core';
 
 @Injectable()
 export class SuccessResponseInterceptor implements NestInterceptor {
-  constructor(private readonly reflector: Reflector) { }
+  constructor(private readonly reflector: Reflector) {}
 
   intercept(ctx: ExecutionContext, next: CallHandler) {
     const skip = this.reflector.get<boolean>('skipWrap', ctx.getHandler());

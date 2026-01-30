@@ -17,12 +17,13 @@ import { PublicGuestJoinDto } from './dto/public-guest-join.dto';
 import { PublicGuestJoinResponseDto } from './dto/public-guest-join-response.dto';
 import { Cron } from '@nestjs/schedule';
 import { DuplicateEventDto } from './dto/duplicate-event.dto';
+import { toIsoString, getStartOfIsoWeek, getStartOfNextIsoWeek } from '@/common/utils/date.util';
+import { locationSignature } from '@/common/utils/geo.util';
+import { buildDisplayName, buildGuestDisplayName } from '@/common/utils/display-name.util';
+import { normalizeEmail } from '@/common/utils/email.util';
 
-function iso(d: Date | null | undefined) {
-  return d ? d.toISOString() : null;
-}
-
-function locationSignature(e: {
+/* Removed - using locationSignature from @/common/utils/geo.util
+   function _locationSignature(e: {
   locationName: string | null;
   locationAddress: string | null;
   locationLat: number | null;
@@ -30,7 +31,7 @@ function locationSignature(e: {
 }) {
   // on considère le lieu “critique” dès qu’un de ces champs change
   return `${e.locationName ?? ''}|${e.locationAddress ?? ''}|${e.locationLat ?? ''}|${e.locationLng ?? ''}`;
-}
+} */
 
 const EVENT_CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 const AUTO_COMPLETE_AFTER_MINUTES = 240;
@@ -43,7 +44,7 @@ export class EventsService {
     private readonly prisma: PrismaService,
     private readonly eventParticipantService: EventParticipantsService,
     private readonly notificationsService: NotificationsService,
-  ) { }
+  ) {}
 
   // petit générateur de code évenement lisible
   private generateEventCode(codeLength?: number): string {
@@ -157,15 +158,8 @@ export class EventsService {
 
     // User FREE : 1 event PLANNED par semaine max
     const now = new Date();
-    // semaine ISO simple : on recule au lundi
-    const day = now.getDay(); // 0 = dimanche, 1 = lundi...
-    const diffToMonday = (day + 6) % 7; // nb de jours depuis lundi
-    const monday = new Date(now);
-    monday.setDate(now.getDate() - diffToMonday);
-    monday.setHours(0, 0, 0, 0);
-
-    const sunday = new Date(monday);
-    sunday.setDate(monday.getDate() + 7); // exclusif
+    const monday = getStartOfIsoWeek(now);
+    const nextMonday = getStartOfNextIsoWeek(now);
 
     const activeCount = await this.prisma.event.count({
       where: {
@@ -173,7 +167,7 @@ export class EventsService {
         status: EventStatus.PLANNED,
         startDateTime: {
           gte: monday,
-          lt: sunday,
+          lt: nextMonday,
         },
       },
     });
@@ -183,14 +177,9 @@ export class EventsService {
     }
   }
 
+  // Deprecated: use buildGuestDisplayName from @/common/utils/display-name.util
   private getUserDisplayName(user: User | null): string {
-    if (!user) {
-      return 'Invité';
-    }
-    if (user.firstName && user.lastName) {
-      return `${user.firstName} ${user.lastName}`;
-    }
-    return user.firstName || user.lastName || 'Invité';
+    return buildGuestDisplayName(user);
   }
 
   private buildParticipantDtoFromEntity(ep: {
@@ -300,12 +289,12 @@ export class EventsService {
 
     const currentUserParticipation: CurrentUserParticipationResponseDto | null = currentEp
       ? {
-        userId: currentEp.userId,
-        roleInEvent: currentEp.role,
-        status: currentEp.status,
-        eventRouteId: currentEp.eventRouteId,
-        eventGroupId: currentEp.eventGroupId,
-      }
+          userId: currentEp.userId,
+          roleInEvent: currentEp.role,
+          status: currentEp.status,
+          eventRouteId: currentEp.eventRouteId,
+          eventGroupId: currentEp.eventGroupId,
+        }
       : null;
 
     const plain = {
@@ -540,8 +529,8 @@ export class EventsService {
       return {
         type: NotificationType.EVENT_CHANGED_TIME,
         title,
-        body: `Changement d’horaire : initialement ${iso(before.startDateTime)} • nouvelle heure ${iso(after.startDateTime)} • Voir les détails`,
-        data: { beforeStartDateTime: iso(before.startDateTime), afterStartDateTime: iso(after.startDateTime) },
+        body: `Changement d’horaire : initialement ${toIsoString(before.startDateTime)} • nouvelle heure ${toIsoString(after.startDateTime)} • Voir les détails`,
+        data: { beforeStartDateTime: toIsoString(before.startDateTime), afterStartDateTime: toIsoString(after.startDateTime) },
       };
     }
 
@@ -577,8 +566,8 @@ export class EventsService {
       data: {
         timeChanged: flags.timeChanged,
         locChanged: flags.locChanged,
-        before: { startDateTime: iso(before.startDateTime), locationName: before.locationName },
-        after: { startDateTime: iso(after.startDateTime), locationName: after.locationName },
+        before: { startDateTime: toIsoString(before.startDateTime), locationName: before.locationName },
+        after: { startDateTime: toIsoString(after.startDateTime), locationName: after.locationName },
       },
     };
   }

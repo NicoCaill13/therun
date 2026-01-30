@@ -14,13 +14,16 @@ import { EventParticipantsSummaryDto } from './dto/event-participants-summary.dt
 import { NotificationsService } from '../notifications/notifications.service';
 import { BroadcastEventDto } from '../events/dto/broadcast-event.dto';
 import { BroadcastEventResponseDto } from '../events/dto/broadcast-event-response.dto';
+import { buildDisplayName } from '@/common/utils/display-name.util';
+import { normalizePagination, computePaginationMeta } from '@/common/utils/pagination.util';
+import { findEventOrThrow, findEventAsOrganiserOrThrow } from '@/common/helpers/event-access.helper';
 
 @Injectable()
 export class EventParticipantsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly notificationsService: NotificationsService,
-  ) { }
+  ) {}
 
   async createOrganiserParticipant(eventId: string, userId: string, db: Prisma.TransactionClient | PrismaService = this.prisma) {
     const existing = await db.eventParticipant.findFirst({
@@ -53,7 +56,7 @@ export class EventParticipantsService {
   ): Promise<{ created: boolean; data: InviteParticipantResponseDto }> {
     const event = await this.prisma.event.findUnique({
       where: { id: eventId },
-      select: { id: true, organiserId: true },
+      select: { id: true, organiserId: true, title: true, startDateTime: true, locationName: true },
     });
 
     if (!event) {
@@ -75,6 +78,13 @@ export class EventParticipantsService {
       throw new NotFoundException('User not found');
     }
 
+    // Get organiser info for notification
+    const organiser = await this.prisma.user.findUnique({
+      where: { id: callerId },
+      select: { firstName: true, lastName: true },
+    });
+    const organiserName = organiser ? [organiser.firstName, organiser.lastName].filter(Boolean).join(' ') : 'Un organisateur';
+
     const existing = await this.prisma.eventParticipant.findFirst({
       where: { eventId, userId: dto.userId },
     });
@@ -87,6 +97,9 @@ export class EventParticipantsService {
           status: EventParticipantStatus.INVITED,
         },
       });
+
+      // S3.1.2: Create invitation notification (re-invite case)
+      await this.createInvitationNotification(dto.userId, eventId, event, organiserName, updated.id);
 
       return {
         created: false,
@@ -109,6 +122,9 @@ export class EventParticipantsService {
       },
     });
 
+    // S3.1.2: Create invitation notification
+    await this.createInvitationNotification(dto.userId, eventId, event, organiserName, created.id);
+
     return {
       created: true,
       data: {
@@ -119,6 +135,38 @@ export class EventParticipantsService {
         status: 'INVITED',
       },
     };
+  }
+
+  /**
+   * S3.1.2: Create a notification when a user is invited to an event
+   */
+  private async createInvitationNotification(
+    userId: string,
+    eventId: string,
+    event: { title: string; startDateTime: Date; locationName: string | null },
+    organiserName: string,
+    participantId: string,
+  ): Promise<void> {
+    const title = `Invitation – ${event.title}`;
+    const bodyParts = [
+      `${organiserName} t'invite à participer`,
+      `Départ: ${event.startDateTime.toISOString()}`,
+      event.locationName ? `Lieu: ${event.locationName}` : null,
+    ].filter(Boolean);
+
+    await this.notificationsService.createOne({
+      userId,
+      eventId,
+      type: NotificationType.EVENT_INVITATION,
+      title,
+      body: bodyParts.join(' • '),
+      data: {
+        eventId,
+        participantId,
+        organiserName,
+      },
+      dedupKey: `event:${eventId}:invitation:${userId}:${Date.now()}`,
+    });
   }
 
   async respondToInvitation(
@@ -305,13 +353,12 @@ export class EventParticipantsService {
     return this.toDto(updated);
   }
 
-  private toDto(p: any): EventParticipantDto {
-    const displayName = p.user?.lastName ? `${p.user.firstName} ${p.user.lastName}` : `${p.user?.firstName ?? ''}`.trim();
+  private toDto(p: { userId: string | null; role: RoleInEvent; status: EventParticipantStatus; eventRouteId: string | null; eventGroupId: string | null; user?: { firstName: string; lastName: string | null } | null }): EventParticipantDto {
     return {
       userId: p.userId,
-      displayName,
+      displayName: buildDisplayName(p.user, 'Participant'),
       roleInEvent: p.role,
-      status: p.status as EventParticipantStatus,
+      status: p.status,
       eventRouteId: p.eventRouteId ?? null,
       eventGroupId: p.eventGroupId ?? null,
     };
@@ -322,18 +369,11 @@ export class EventParticipantsService {
     organiserId: string,
     q: ListEventParticipantsQueryDto,
   ): Promise<EventParticipantsListResponseDto> {
-    const event = await this.prisma.event.findUnique({
-      where: { id: eventId },
-      select: { id: true, organiserId: true },
-    });
-    if (!event) throw new NotFoundException('Event not found');
-    if (event.organiserId !== organiserId) throw new ForbiddenException('Only organiser can view participants');
+    await findEventAsOrganiserOrThrow(this.prisma, eventId, organiserId, undefined, 'Only organiser can view participants');
 
-    const page = q.page ?? 1;
-    const pageSize = q.pageSize ?? 20;
+    const pagination = normalizePagination(q);
 
-    // default: exclude DECLINED
-    const where: any = {
+    const where = {
       eventId,
       ...(q.status ? { status: q.status } : { status: { not: EventParticipantStatus.DECLINED } }),
       ...(q.eventRouteId ? { eventRouteId: q.eventRouteId } : {}),
@@ -350,41 +390,29 @@ export class EventParticipantsService {
           eventGroup: { select: { id: true, label: true } },
         },
         orderBy: { createdAt: 'asc' },
-        skip: (page - 1) * pageSize,
-        take: pageSize,
+        skip: pagination.skip,
+        take: pagination.pageSize,
       }),
     ]);
 
-    const totalPages = totalCount === 0 ? 0 : Math.ceil(totalCount / pageSize);
+    const meta = computePaginationMeta(totalCount, pagination);
 
     return {
-      items: rows.map((p) => {
-        const displayName = p.user?.lastName ? `${p.user.firstName} ${p.user.lastName}` : (p.user?.firstName ?? 'Guest');
-
-        return {
-          participantId: p.id,
-          userId: p.userId ?? null,
-          displayName,
-          roleInEvent: p.role as any,
-          status: p.status as any,
-          eventRoute: p.eventRoute ? { id: p.eventRoute.id, name: p.eventRoute.name } : null,
-          eventGroup: p.eventGroup ? { id: p.eventGroup.id, label: p.eventGroup.label } : null,
-        };
-      }),
-      page,
-      pageSize,
-      totalCount,
-      totalPages,
+      items: rows.map((p) => ({
+        participantId: p.id,
+        userId: p.userId ?? null,
+        displayName: buildDisplayName(p.user, 'Guest'),
+        roleInEvent: p.role,
+        status: p.status,
+        eventRoute: p.eventRoute ? { id: p.eventRoute.id, name: p.eventRoute.name } : null,
+        eventGroup: p.eventGroup ? { id: p.eventGroup.id, label: p.eventGroup.label } : null,
+      })),
+      ...meta,
     };
   }
 
   async getParticipantsSummary(eventId: string, organiserId: string): Promise<EventParticipantsSummaryDto> {
-    const event = await this.prisma.event.findUnique({
-      where: { id: eventId },
-      select: { id: true, organiserId: true },
-    });
-    if (!event) throw new NotFoundException('Event not found');
-    if (event.organiserId !== organiserId) throw new ForbiddenException('Only organiser can view participants');
+    await findEventAsOrganiserOrThrow(this.prisma, eventId, organiserId, undefined, 'Only organiser can view participants');
 
     // counts principaux
     const [goingCount, invitedCount, maybeCount] = await Promise.all([
@@ -440,15 +468,7 @@ export class EventParticipantsService {
   }
 
   async broadcastToParticipants(eventId: string, currentUserId: string, dto: BroadcastEventDto): Promise<BroadcastEventResponseDto> {
-    const event = await this.prisma.event.findUnique({
-      where: { id: eventId },
-      select: { id: true, organiserId: true },
-    });
-
-    if (!event) throw new NotFoundException('Event not found');
-    if (event.organiserId !== currentUserId) {
-      throw new ForbiddenException('Only organiser can broadcast to participants');
-    }
+    await findEventAsOrganiserOrThrow(this.prisma, eventId, currentUserId, undefined, 'Only organiser can broadcast to participants');
 
     const participants = await this.prisma.eventParticipant.findMany({
       where: {

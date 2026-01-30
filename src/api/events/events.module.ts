@@ -14,4 +14,4 @@ import { EventsPublicController } from './events.public.controller';
   providers: [EventsService, PrismaService],
   exports: [EventsService],
 })
-export class EventsModule { }
+export class EventsModule {}

@@ -8,4 +8,4 @@ import { NotificationsModule } from '../notifications/notifications.module';
   providers: [RemindersService],
   exports: [RemindersService],
 })
-export class RemindersModule { }
+export class RemindersModule {}
