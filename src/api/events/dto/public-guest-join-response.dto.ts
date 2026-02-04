@@ -17,4 +17,15 @@ export class PublicGuestJoinResponseDto {
   @ApiProperty()
   @IsBoolean()
   isGuest!: boolean;
+
+  /**
+   * Short-lived JWT (24h) for guest session.
+   * Front can store it as a bearer token for subsequent calls.
+   */
+  @ApiProperty({
+    description: 'JWT access token for the guest user (valid ~24h)',
+    example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
+  })
+  @IsString()
+  accessToken!: string;
 }

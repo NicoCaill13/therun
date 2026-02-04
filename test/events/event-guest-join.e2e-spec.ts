@@ -22,7 +22,7 @@ describe('S6.1.2 — POST /public/events/:eventId/guest-join (e2e)', () => {
     await clearAll(prisma);
   });
 
-  it('201 sans token — crée un user guest (email null) + participant GOING', async () => {
+  it('201 — crée un user guest (email null) + participant GOING + accessToken', async () => {
     const organiser = await seedUser(prisma, UserPlan.FREE, { firstName: 'Org' });
 
     const event = await prisma.event.create({
@@ -41,6 +41,8 @@ describe('S6.1.2 — POST /public/events/:eventId/guest-join (e2e)', () => {
     expect(res.body.userId).toBeTruthy();
     expect(res.body.participantId).toBeTruthy();
     expect(res.body.isGuest).toBe(true);
+    expect(typeof res.body.accessToken).toBe('string');
+    expect(res.body.accessToken.length).toBeGreaterThan(0);
 
     const user = await prisma.user.findUnique({
       where: { id: res.body.userId },
@@ -62,7 +64,7 @@ describe('S6.1.2 — POST /public/events/:eventId/guest-join (e2e)', () => {
     expect(participant?.status).toBe(EventParticipantStatus.GOING);
   });
 
-  it('201 — si email correspond à un user existant, ne crée pas de nouveau user, et crée la participation', async () => {
+  it('201 — si email correspond à un user existant, ne crée pas de nouveau user, crée la participation et renvoie un accessToken', async () => {
     const organiser = await seedUser(prisma, UserPlan.FREE, { firstName: 'Org' });
     const existing = await seedUser(prisma, UserPlan.FREE, { firstName: 'Ana', email: 'ana@example.com' });
 
@@ -82,6 +84,8 @@ describe('S6.1.2 — POST /public/events/:eventId/guest-join (e2e)', () => {
       .expect(201);
 
     expect(res.body.userId).toBe(existing.id);
+    expect(typeof res.body.accessToken).toBe('string');
+    expect(res.body.accessToken.length).toBeGreaterThan(0);
 
     const userCount = await prisma.user.count({ where: { email: 'ana@example.com' } });
     expect(userCount).toBe(1);

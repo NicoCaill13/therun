@@ -21,6 +21,7 @@ import { toIsoString, getStartOfIsoWeek, getStartOfNextIsoWeek } from '@/common/
 import { locationSignature } from '@/common/utils/geo.util';
 import { buildDisplayName, buildGuestDisplayName } from '@/common/utils/display-name.util';
 import { normalizeEmail } from '@/common/utils/email.util';
+import { AuthService } from '@/infrastructure/auth/auth.service';
 
 /* Removed - using locationSignature from @/common/utils/geo.util
    function _locationSignature(e: {
@@ -44,6 +45,7 @@ export class EventsService {
     private readonly prisma: PrismaService,
     private readonly eventParticipantService: EventParticipantsService,
     private readonly notificationsService: NotificationsService,
+    private readonly authService: AuthService,
   ) {}
 
   // petit générateur de code évenement lisible
@@ -628,14 +630,14 @@ export class EventsService {
       throw new BadRequestException('Event not joinable');
     }
 
-    const email = dto.email?.trim().toLowerCase();
+    const email = dto.email?.trim().toLowerCase() ?? null;
 
-    let user = null as null | { id: string; isGuest: boolean };
+    let user = null as null | { id: string; isGuest: boolean; email: string | null };
 
     if (email) {
       const existing = await this.prisma.user.findUnique({
         where: { email },
-        select: { id: true, isGuest: true },
+        select: { id: true, isGuest: true, email: true },
       });
 
       if (existing) {
@@ -649,7 +651,7 @@ export class EventsService {
             isGuest: true,
             plan: UserPlan.FREE,
           },
-          select: { id: true, isGuest: true },
+          select: { id: true, isGuest: true, email: true },
         });
       }
     } else {
@@ -661,7 +663,7 @@ export class EventsService {
           isGuest: true,
           plan: UserPlan.FREE,
         },
-        select: { id: true, isGuest: true },
+        select: { id: true, isGuest: true, email: true },
       });
     }
 
@@ -680,11 +682,14 @@ export class EventsService {
         select: { id: true },
       });
 
+      const accessToken = this.authService.signGuest({ id: user.id, email: user.email });
+
       return {
         eventId: ev.id,
         participantId: updated.id,
         userId: user.id,
         isGuest: user.isGuest,
+        accessToken,
       };
     }
 
@@ -698,11 +703,14 @@ export class EventsService {
       select: { id: true },
     });
 
+    const accessToken = this.authService.signGuest({ id: user.id, email: user.email });
+
     return {
       eventId: ev.id,
       participantId: created.id,
       userId: user.id,
       isGuest: user.isGuest,
+      accessToken,
     };
   }
 
