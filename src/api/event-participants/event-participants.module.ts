@@ -1,11 +1,11 @@
 import { Module } from '@nestjs/common';
 import { EventParticipantsService } from './event-participants.service';
-import { PrismaService } from '@/infrastructure/db/prisma.service';
+import { EventParticipantMapper } from './event-participant.mapper';
 import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
   imports: [NotificationsModule],
-  providers: [EventParticipantsService, PrismaService],
-  exports: [EventParticipantsService],
+  providers: [EventParticipantsService, EventParticipantMapper],
+  exports: [EventParticipantsService, EventParticipantMapper],
 })
 export class EventParticipantsModule {}

@@ -4,14 +4,14 @@ import { INestApplication } from '@nestjs/common';
 import { PrismaService } from '@/infrastructure/db/prisma.service';
 import { UserPlan, EventStatus } from '@prisma/client';
 import { clearAll, createE2eApp, makeJwtToken, seedUser } from '../e2e-utils';
-import { EventsService } from '@/api/events/events.service';
+import { EventCodeService } from '@/api/events/event-code.service';
 
 const CODE_REGEX = /^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{5,8}$/;
 
 describe('S6.1.0 – EventCode auto (e2e)', () => {
   let app: INestApplication;
   let prisma: PrismaService;
-  let eventsService: EventsService;
+  let eventCodeService: EventCodeService;
 
   let organiser: any;
   let organiserToken: string;
@@ -20,7 +20,7 @@ describe('S6.1.0 – EventCode auto (e2e)', () => {
     const ctx = await createE2eApp();
     app = ctx.app;
     prisma = ctx.prisma;
-    eventsService = app.get(EventsService);
+    eventCodeService = app.get(EventCodeService);
 
     await clearAll(prisma);
 
@@ -43,14 +43,12 @@ describe('S6.1.0 – EventCode auto (e2e)', () => {
   });
 
   it('201 génère eventCode (5–8, alphabet restreint) et il est exposé dans GET /events/:id', async () => {
-    // ⚠️ payload minimal pour éviter forbidNonWhitelisted
     const createRes = await request(app.getHttpServer())
       .post('/events')
       .set('Authorization', `Bearer ${organiserToken}`)
       .send({
         title: 'Sortie test code',
         startDateTime: new Date('2030-01-01T10:00:00.000Z').toISOString(),
-        // si ton DTO accepte ces champs, garde-les, sinon retire-les
         locationName: 'Parc',
         locationAddress: 'Rue X',
       })
@@ -67,13 +65,12 @@ describe('S6.1.0 – EventCode auto (e2e)', () => {
       .set('Authorization', `Bearer ${organiserToken}`)
       .expect(200);
 
-    // ton getEventDetails renvoie { event: {...} }
     expect(getRes.body?.event?.eventCode).toBe(createRes.body.eventCode);
     expect(getRes.body?.event?.eventCode).toMatch(CODE_REGEX);
   });
 
-  it('retry automatique en cas de collision (pas d’erreur visible)', async () => {
-    // 1) on crée un event avec un code "connu" (valide)
+  it('retry automatique en cas de collision (pas d\'erreur visible)', async () => {
+    // 1) create event with known code
     const existing = await prisma.event.create({
       data: {
         organiserId: organiser.id,
@@ -89,9 +86,9 @@ describe('S6.1.0 – EventCode auto (e2e)', () => {
     });
     expect(existing.eventCode).toBe('ABCDE');
 
-    // 2) on force generateEventCode() à produire d'abord la collision, puis un code OK
-    const original = (eventsService as any).generateEventCode;
-    (eventsService as any).generateEventCode = jest
+    // 2) mock generateEventCode on EventCodeService (extracted from EventsService)
+    const original = eventCodeService.generateEventCode.bind(eventCodeService);
+    eventCodeService.generateEventCode = jest
       .fn()
       .mockReturnValueOnce('ABCDE') // collision
       .mockReturnValueOnce('FGHJK'); // ok
@@ -109,6 +106,6 @@ describe('S6.1.0 – EventCode auto (e2e)', () => {
     expect(res.body.eventCode).toMatch(CODE_REGEX);
 
     // restore
-    (eventsService as any).generateEventCode = original;
+    eventCodeService.generateEventCode = original;
   });
 });

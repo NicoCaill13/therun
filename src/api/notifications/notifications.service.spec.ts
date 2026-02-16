@@ -1,8 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { NotificationsService } from './notifications.service';
+import { NotificationMapper } from './notification.mapper';
 import { PrismaService } from '@/infrastructure/db/prisma.service';
 import { NotFoundException } from '@nestjs/common';
-import { NotificationType } from '@prisma/client';
+import { NotificationType } from '@/common/enums';
 
 describe('NotificationsService', () => {
   let service: NotificationsService;
@@ -25,7 +26,11 @@ describe('NotificationsService', () => {
     jest.clearAllMocks();
 
     const module: TestingModule = await Test.createTestingModule({
-      providers: [NotificationsService, { provide: PrismaService, useValue: mockPrisma }],
+      providers: [
+        NotificationsService,
+        NotificationMapper,
+        { provide: PrismaService, useValue: mockPrisma },
+      ],
     }).compile();
 
     service = module.get<NotificationsService>(NotificationsService);

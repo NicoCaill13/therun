@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { EventStatus } from '@prisma/client';
+import { EventStatus } from '@/common/enums';
 import { IsEnum, IsISO8601, IsOptional, IsString } from 'class-validator';
 
 export class PublicOrganiserDto {

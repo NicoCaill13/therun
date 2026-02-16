@@ -3,16 +3,18 @@ import { Injectable, ForbiddenException, NotFoundException, BadRequestException 
 import { PrismaService } from '@/infrastructure/db/prisma.service';
 import { CreateEventRouteDto, EventRouteMode } from './dto/create-event-route.dto';
 import { EventRouteDto } from './dto/event-route.dto';
-import { UserPlan, EventRoute } from '@prisma/client';
+import { UserPlan } from '@/common/enums';
 import { JwtUser } from '@/types/jwt';
 import { RoutesService } from '../routes/routes.service';
 import { findEventOrThrow, findEventAsOrganiserOrThrow } from '@/common/helpers/event-access.helper';
+import { EventRouteMapper } from './event-route.mapper';
 
 @Injectable()
 export class EventRoutesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly routesService: RoutesService,
+    private readonly mapper: EventRouteMapper,
   ) {}
 
   async listByEvent(eventId: string): Promise<EventRouteDto[]> {
@@ -23,7 +25,7 @@ export class EventRoutesService {
       orderBy: { createdAt: 'asc' },
     });
 
-    return routes.map((r) => this.toDto(r));
+    return routes.map((r) => this.mapper.toDto(r));
   }
 
   async addRouteToEvent(eventId: string, user: JwtUser, dto: CreateEventRouteDto): Promise<EventRouteDto> {
@@ -64,7 +66,7 @@ export class EventRoutesService {
       },
     });
 
-    return this.toDto(eventRoute);
+    return this.mapper.toDto(eventRoute);
   }
 
   // mode = ATTACH → réutilise un Route existant
@@ -99,7 +101,7 @@ export class EventRoutesService {
       },
     });
 
-    return this.toDto(eventRoute);
+    return this.mapper.toDto(eventRoute);
   }
 
   // mode = COPY → crée un nouveau Route (owner = user) + EventRoute lié
@@ -147,20 +149,7 @@ export class EventRoutesService {
       },
     });
 
-    return this.toDto(eventRoute);
+    return this.mapper.toDto(eventRoute);
   }
 
-  private toDto(entity: EventRoute): EventRouteDto {
-    return {
-      id: entity.id,
-      eventId: entity.eventId,
-      routeId: entity.routeId ?? null,
-      name: entity.name,
-      distanceMeters: entity.distanceMeters,
-      type: entity.type,
-      encodedPolyline: entity.encodedPolyline,
-      createdAt: entity.createdAt,
-      updatedAt: entity.updatedAt,
-    };
-  }
 }

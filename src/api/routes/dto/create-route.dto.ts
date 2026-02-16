@@ -1,5 +1,5 @@
 import { IsEnum, IsOptional, IsString } from 'class-validator';
-import { RouteType } from '@prisma/client';
+import { RouteType } from '@/common/enums';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class CreateRouteDto {

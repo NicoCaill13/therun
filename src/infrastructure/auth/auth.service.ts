@@ -1,17 +1,40 @@
 import { Injectable } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import * as bcrypt from 'bcrypt';
 import type { JwtPayload } from '@/types/jwt';
+
+const BCRYPT_ROUNDS = 10;
 
 @Injectable()
 export class AuthService {
   constructor(private readonly jwt: JwtService) {}
 
-  signForUser(user: any) {
-    return this.jwt.sign({ user });
+  /**
+   * Sign a JWT token for a registered user.
+   */
+  signForUser(payload: JwtPayload): string {
+    return this.jwt.sign(payload);
   }
 
-  decoded(token) {
+  /**
+   * Verify and decode a JWT token.
+   */
+  decoded(token: string): JwtPayload {
     return this.jwt.verify(token);
+  }
+
+  /**
+   * Hash a plain-text password using bcrypt.
+   */
+  async hashPassword(password: string): Promise<string> {
+    return bcrypt.hash(password, BCRYPT_ROUNDS);
+  }
+
+  /**
+   * Compare a plain-text password against a bcrypt hash.
+   */
+  async verifyPassword(password: string, hash: string): Promise<boolean> {
+    return bcrypt.compare(password, hash);
   }
 
   /**

@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { UserPlan } from '@prisma/client';
+import { UserPlan } from '@/common/enums';
 
 export class MeProfileResponseDto {
   @ApiProperty({ description: 'User ID' })

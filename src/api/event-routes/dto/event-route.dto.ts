@@ -1,4 +1,4 @@
-import { RouteType } from '@prisma/client';
+import { RouteType } from '@/common/enums';
 
 export class EventRouteDto {
   id: string;

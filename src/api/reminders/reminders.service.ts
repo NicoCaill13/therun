@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '@/infrastructure/db/prisma.service';
-import { EventParticipantStatus, EventStatus, NotificationType } from '@prisma/client';
+import { EventParticipantStatus, EventStatus, NotificationType } from '@/common/enums';
 import { NotificationsService } from '../notifications/notifications.service';
 import { addMinutes } from '@/common/utils/date.util';
 

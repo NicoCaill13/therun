@@ -1,11 +1,10 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '@/infrastructure/db/prisma.service';
-import { NotificationType, Notification } from '@prisma/client';
-import { NotificationDto } from './dto/notification.dto';
-import { normalizePagination, computePaginationMeta, PaginationInput } from '@/common/utils/pagination.util';
-import { toIsoString } from '@/common/utils/date.util';
-
+import { NotificationType } from '@/common/enums';
 import { Prisma } from '@prisma/client';
+import { NotificationDto } from './dto/notification.dto';
+import { NotificationMapper } from './notification.mapper';
+import { normalizePagination, computePaginationMeta, PaginationInput } from '@/common/utils/pagination.util';
 
 export interface CreateNotificationInput {
   userId: string;
@@ -19,7 +18,10 @@ export interface CreateNotificationInput {
 
 @Injectable()
 export class NotificationsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly mapper: NotificationMapper,
+  ) {}
 
   async createOne(input: CreateNotificationInput): Promise<NotificationDto> {
     const notif = await this.prisma.notification.create({
@@ -34,7 +36,7 @@ export class NotificationsService {
       },
     });
 
-    return this.toDto(notif);
+    return this.mapper.toDto(notif);
   }
 
   /**
@@ -64,14 +66,14 @@ export class NotificationsService {
     const notif = await this.prisma.notification.findUnique({ where: { id: notificationId } });
     if (!notif || notif.userId !== userId) throw new NotFoundException('Notification not found');
 
-    if (notif.readAt) return this.toDto(notif);
+    if (notif.readAt) return this.mapper.toDto(notif);
 
     const updated = await this.prisma.notification.update({
       where: { id: notificationId },
       data: { readAt: new Date() },
     });
 
-    return this.toDto(updated);
+    return this.mapper.toDto(updated);
   }
 
   async listForUser(userId: string, opts: PaginationInput & { unreadOnly?: boolean }) {
@@ -96,22 +98,10 @@ export class NotificationsService {
     const meta = computePaginationMeta(totalCount, pagination);
 
     return {
-      items: rows.map((n) => this.toDto(n)),
+      items: rows.map((n) => this.mapper.toDto(n)),
       ...meta,
       unreadCount,
     };
   }
 
-  private toDto(notification: Notification): NotificationDto {
-    return {
-      id: notification.id,
-      type: notification.type,
-      title: notification.title,
-      body: notification.body,
-      eventId: notification.eventId ?? null,
-      data: notification.data ?? null,
-      createdAt: toIsoString(notification.createdAt)!,
-      readAt: toIsoString(notification.readAt),
-    };
-  }
 }

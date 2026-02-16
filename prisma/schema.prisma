@@ -59,7 +59,8 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  email     String? @unique
+  email        String? @unique
+  passwordHash String?
   // Pour les Guests sans email on laissera null, ou on forcera plus tard.
   firstName String
   lastName  String?

@@ -1,6 +1,6 @@
 import { Type } from 'class-transformer';
 import { IsArray, IsInt, IsNumber, IsOptional, IsString, Min, ValidateNested } from 'class-validator';
-import { RouteType } from '@prisma/client';
+import { RouteType } from '@/common/enums';
 
 export class RouteSuggestionItemDto {
   @IsString()

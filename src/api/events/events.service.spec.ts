@@ -3,8 +3,10 @@ import { EventsService } from './events.service';
 import { PrismaService } from '@/infrastructure/db/prisma.service';
 import { EventParticipantsService } from '../event-participants/event-participants.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { AuthService } from '@/infrastructure/auth/auth.service';
+import { EventCodeService } from './event-code.service';
 import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
-import { EventStatus, UserPlan } from '@prisma/client';
+import { EventStatus, UserPlan } from '@/common/enums';
 
 describe('EventsService', () => {
   let service: EventsService;
@@ -36,6 +38,18 @@ describe('EventsService', () => {
     createMany: jest.fn(),
   };
 
+  const mockAuthService = {
+    signForUser: jest.fn(),
+    decoded: jest.fn(),
+    hashPassword: jest.fn(),
+    verifyPassword: jest.fn(),
+  };
+
+  const mockEventCodeService = {
+    generateEventCode: jest.fn().mockReturnValue('ABC123'),
+    generateUniqueEventCode: jest.fn().mockResolvedValue('ABC123'),
+  };
+
   beforeEach(async () => {
     jest.clearAllMocks();
 
@@ -45,6 +59,8 @@ describe('EventsService', () => {
         { provide: PrismaService, useValue: mockPrisma },
         { provide: EventParticipantsService, useValue: mockEventParticipantsService },
         { provide: NotificationsService, useValue: mockNotificationsService },
+        { provide: AuthService, useValue: mockAuthService },
+        { provide: EventCodeService, useValue: mockEventCodeService },
       ],
     }).compile();
 

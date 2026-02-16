@@ -1,5 +1,5 @@
 // src/api/routes/dto/route.dto.ts
-import { RouteType } from '@prisma/client';
+import { RouteType } from '@/common/enums';
 import { IsDate, IsEnum, IsInt, IsNotEmpty, IsNumber, IsOptional, IsString, Min } from 'class-validator';
 
 export class RouteDto {

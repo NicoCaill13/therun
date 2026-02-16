@@ -2,7 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { AdminService } from './admin.service';
 import { PrismaService } from '@/infrastructure/db/prisma.service';
 import { NotFoundException } from '@nestjs/common';
-import { UserPlan } from '@prisma/client';
+import { UserPlan } from '@/common/enums';
 
 describe('AdminService', () => {
   let service: AdminService;

@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '@/infrastructure/db/prisma.service';
-import { EventParticipantStatus, NotificationType, Prisma, RoleInEvent } from '@prisma/client';
+import { EventParticipantStatus, NotificationType, RoleInEvent } from '@/common/enums';
+import { Prisma } from '@prisma/client';
 import { InviteParticipantResponseDto } from './dto/invite-participant-response.dto';
 import { InviteParticipantDto } from './dto/invite-participant.dto';
 import { RespondInvitationDto } from './dto/respond-invitation.dto';
@@ -17,12 +18,14 @@ import { BroadcastEventResponseDto } from '../events/dto/broadcast-event-respons
 import { buildDisplayName } from '@/common/utils/display-name.util';
 import { normalizePagination, computePaginationMeta } from '@/common/utils/pagination.util';
 import { findEventOrThrow, findEventAsOrganiserOrThrow } from '@/common/helpers/event-access.helper';
+import { EventParticipantMapper } from './event-participant.mapper';
 
 @Injectable()
 export class EventParticipantsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly notificationsService: NotificationsService,
+    private readonly mapper: EventParticipantMapper,
   ) {}
 
   async createOrganiserParticipant(eventId: string, userId: string, db: Prisma.TransactionClient | PrismaService = this.prisma) {
@@ -243,7 +246,7 @@ export class EventParticipantsService {
       });
     });
 
-    return this.toDto(participant);
+    return this.mapper.toDto(participant);
   }
 
   async updateMySelection(eventId: string, userId: string, dto: UpdateMySelectionDto): Promise<EventParticipantDto> {
@@ -350,18 +353,7 @@ export class EventParticipantsService {
       include: { user: { select: { firstName: true, lastName: true } } },
     });
 
-    return this.toDto(updated);
-  }
-
-  private toDto(p: { userId: string | null; role: RoleInEvent; status: EventParticipantStatus; eventRouteId: string | null; eventGroupId: string | null; user?: { firstName: string; lastName: string | null } | null }): EventParticipantDto {
-    return {
-      userId: p.userId,
-      displayName: buildDisplayName(p.user, 'Participant'),
-      roleInEvent: p.role,
-      status: p.status,
-      eventRouteId: p.eventRouteId ?? null,
-      eventGroupId: p.eventGroupId ?? null,
-    };
+    return this.mapper.toDto(updated);
   }
 
   async listEventParticipantsForOrganiser(

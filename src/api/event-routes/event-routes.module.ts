@@ -1,11 +1,11 @@
 import { Module } from '@nestjs/common';
 import { EventRoutesService } from './event-routes.service';
-import { PrismaService } from '@/infrastructure/db/prisma.service';
+import { EventRouteMapper } from './event-route.mapper';
 import { RoutesModule } from '../routes/routes.module';
 
 @Module({
   imports: [RoutesModule],
-  providers: [EventRoutesService, PrismaService],
-  exports: [EventRoutesService],
+  providers: [EventRoutesService, EventRouteMapper],
+  exports: [EventRoutesService, EventRouteMapper],
 })
 export class EventRoutesModule {}

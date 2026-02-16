@@ -2,7 +2,7 @@ import { Injectable, BadRequestException, ForbiddenException, NotFoundException 
 import { PrismaService } from '@/infrastructure/db/prisma.service';
 import { CreateRouteDto } from './dto/create-route.dto';
 import { RouteDto } from './dto/route.dto';
-import { UserPlan, Route } from '@prisma/client';
+import { UserPlan } from '@/common/enums';
 import { computeCenterAndRadius, computeDistanceMeters, decodePolyline } from '@/utils/polyline.util';
 import { JwtUser } from '@/types/jwt';
 import { RouteListResponseDto } from './dto/route-list.dto';
@@ -13,9 +13,14 @@ import { metersToLatDelta, metersToLngDelta, computeBoundingBox, haversineMeters
 import { normalizePagination, computePaginationMeta } from '@/common/utils/pagination.util';
 import { DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE } from '@/common/constants/pagination.constants';
 
+import { RouteMapper } from './route.mapper';
+
 @Injectable()
 export class RoutesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly mapper: RouteMapper,
+  ) {}
 
   async createRoute(user: JwtUser, dto: CreateRouteDto): Promise<RouteDto> {
     if (!dto.encodedPolyline) {
@@ -43,7 +48,7 @@ export class RoutesService {
       },
     });
 
-    return this.toDto(route);
+    return this.mapper.toDto(route);
   }
 
   async getRouteById(routeId: string, user: JwtUser): Promise<RouteDto> {
@@ -63,23 +68,7 @@ export class RoutesService {
       throw new ForbiddenException('You are not allowed to view this route');
     }
 
-    return this.toDto(route);
-  }
-
-  private toDto(route: Route): RouteDto {
-    return {
-      id: route.id,
-      ownerId: route.ownerId,
-      name: route.name,
-      encodedPolyline: route.encodedPolyline,
-      distanceMeters: route.distanceMeters,
-      centerLat: route.centerLat,
-      centerLng: route.centerLng,
-      radiusMeters: route.radiusMeters,
-      type: route.type,
-      createdAt: route.createdAt,
-      updatedAt: route.updatedAt,
-    };
+    return this.mapper.toDto(route);
   }
 
   async listRoutes(user: JwtUser, query: ListRoutesQueryDto): Promise<RouteListResponseDto> {
@@ -143,7 +132,7 @@ export class RoutesService {
     const meta = computePaginationMeta(totalCount, pagination);
 
     return {
-      items: routes.map((r) => this.toDto(r)),
+      items: routes.map((r) => this.mapper.toDto(r)),
       ...meta,
     };
   }

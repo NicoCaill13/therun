@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '@/infrastructure/db/prisma.service';
 import { JoinEventSummaryDto } from './dto/join-event-summary.dto';
-import { EventParticipantStatus, RoleInEvent } from '@prisma/client';
+import { EventParticipantStatus, RoleInEvent } from '@/common/enums';
 import { JoinParticipateResponseDto } from './dto/join-participate-response.dto';
 
 @Injectable()

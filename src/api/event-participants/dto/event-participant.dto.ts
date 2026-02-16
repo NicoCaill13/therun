@@ -1,5 +1,5 @@
 import { Expose } from 'class-transformer';
-import { RoleInEvent, EventParticipantStatus } from '@prisma/client';
+import { RoleInEvent, EventParticipantStatus } from '@/common/enums';
 
 export class EventParticipantDto {
   @Expose()

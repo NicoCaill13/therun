@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { EventParticipantStatus, RoleInEvent, UserPlan } from '@prisma/client';
+import { EventParticipantStatus, RoleInEvent, UserPlan } from '@/common/enums';
 
 export class PublicGuestAuthUserDto {
   @ApiProperty()

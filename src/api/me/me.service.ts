@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '@/infrastructure/db/prisma.service';
-import { EventParticipantStatus, EventStatus, UserPlan } from '@prisma/client';
+import { EventParticipantStatus, EventStatus, UserPlan } from '@/common/enums';
 import { MeInvitationsQueryDto } from './dto/me-invitations-query.dto';
 import { MeInvitationsResponseDto } from './dto/me-invitations-response.dto';
 import { JwtUser } from '@/types/jwt';
