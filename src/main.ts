@@ -56,8 +56,20 @@ async function bootstrap() {
   const configService = app.get(ConfigService);
   const port = configService.get('APP_PORT');
 
+  const corsOrigins = [
+    'http://localhost:3001',
+    'http://127.0.0.1:3001',
+    'http://localhost:8081',
+    'http://127.0.0.1:8081',
+    'http://localhost:19006',
+    'http://127.0.0.1:19006',
+    'http://localhost:19000',
+    'http://127.0.0.1:19000',
+    'http://localhost:5000',
+    'http://127.0.0.1:5000',
+  ];
   app.enableCors({
-    origin: ['http://localhost:3001', 'http://127.0.0.1:3001'],
+    origin: corsOrigins,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
     credentials: true,
