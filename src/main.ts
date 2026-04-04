@@ -57,7 +57,13 @@ async function bootstrap() {
   const port = configService.get('APP_PORT');
 
   app.enableCors({
-    origin: ['http://localhost:3001', 'http://127.0.0.1:3001'],
+    origin: [
+      'http://localhost:3001',
+      'http://127.0.0.1:3001',
+      /* Expo web dev (expo start --web) */
+      'http://localhost:8081',
+      'http://127.0.0.1:8081',
+    ],
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
     credentials: true,
