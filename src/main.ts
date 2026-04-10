@@ -50,6 +50,12 @@ async function bootstrap() {
       P2002: HttpStatus.CONFLICT,
       P2025: HttpStatus.NOT_FOUND,
       P2003: HttpStatus.BAD_REQUEST,
+      /** Column/table missing: DB not migrated (e.g. `passwordHash` on User). */
+      P2022: {
+        statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
+        errorMessage:
+          'Database schema is out of sync with the Prisma schema. Apply pending migrations (e.g. `npx prisma migrate deploy`).',
+      },
     }),
     new AllExceptionsFilter(),
   );

@@ -4,7 +4,7 @@ import { PrismaService } from '@/infrastructure/db/prisma.service';
 import { EventParticipantsService } from '../event-participants/event-participants.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
-import { EventStatus, UserPlan } from '@prisma/client';
+import { EventStatus, EventType, UserPlan } from '@prisma/client';
 
 describe('EventsService', () => {
   let service: EventsService;
@@ -70,6 +70,7 @@ describe('EventsService', () => {
         ...createEventDto,
         eventCode: 'ABC123',
         status: EventStatus.PLANNED,
+        eventType: EventType.BlaBlaRun,
         organiserId: premiumUserId,
       });
       mockEventParticipantsService.createOrganiserParticipant.mockResolvedValue({});
@@ -97,6 +98,7 @@ describe('EventsService', () => {
         ...createEventDto,
         eventCode: 'XYZ789',
         status: EventStatus.PLANNED,
+        eventType: EventType.BlaBlaRun,
         organiserId: freeUserId,
       });
       mockEventParticipantsService.createOrganiserParticipant.mockResolvedValue({});
@@ -121,6 +123,7 @@ describe('EventsService', () => {
         description: 'Description',
         startDateTime: new Date(),
         status: EventStatus.PLANNED,
+        eventType: EventType.BlaBlaTrail,
         eventCode: 'ABC123',
         locationName: 'Location',
         locationAddress: null,

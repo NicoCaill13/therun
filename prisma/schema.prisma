@@ -24,6 +24,13 @@ enum EventStatus {
   CANCELLED
 }
 
+enum EventType {
+  BlaBlaRun
+  BlaBlaTrail
+  TechnicalRun
+  TechnicalTrail
+}
+
 enum RoleInEvent {
   ORGANISER
   ENCADRANT
@@ -72,6 +79,9 @@ model User {
 
   acceptedTermsAt DateTime?
 
+  // Credentials (null for guests / legacy accounts without password auth)
+  passwordHash String?
+
   // Relations
   organisedEvents Event[]            @relation("OrganiserEvents")
   participations  EventParticipant[]
@@ -90,6 +100,7 @@ model Event {
   description   String?
   startDateTime DateTime
   status        EventStatus @default(PLANNED)
+  eventType     EventType   @default(BlaBlaRun)
 
   completedAt            DateTime?
   goingCountAtCompletion Int?

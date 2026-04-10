@@ -1,7 +1,17 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { IsDateString, IsNotEmpty, IsNumber, IsOptional, IsString } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { EventType } from '@prisma/client';
+import { IsDateString, IsEnum, IsNotEmpty, IsNumber, IsOptional, IsString } from 'class-validator';
 
 export class CreateEventDto {
+  @ApiPropertyOptional({
+    enum: EventType,
+    example: EventType.BlaBlaRun,
+    description: 'When omitted, defaults to BlaBlaRun',
+  })
+  @IsOptional()
+  @IsEnum(EventType)
+  eventType?: EventType;
+
   @ApiProperty({ example: 'Run du jeudi soir – Run & Drink' })
   @IsString()
   @IsNotEmpty()

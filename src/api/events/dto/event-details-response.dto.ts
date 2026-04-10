@@ -1,6 +1,6 @@
 import { CurrentUserParticipationResponseDto, EventParticipantDto } from '@/api/event-participants/dto/event-participant.dto';
 import { SimpleUserResponseDto } from '@/api/users/dto/simple-user.dto';
-import { EventStatus } from '@prisma/client';
+import { EventStatus, EventType } from '@prisma/client';
 import { Expose, Transform, Type } from 'class-transformer';
 
 export class EventBlockResponseDto {
@@ -33,6 +33,9 @@ export class EventBlockResponseDto {
 
   @Expose()
   status!: EventStatus;
+
+  @Expose()
+  eventType!: EventType;
 
   @Expose()
   eventCode!: string;

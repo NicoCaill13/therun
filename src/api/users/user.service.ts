@@ -1,10 +1,18 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { PrismaService } from '@/infrastructure/db/prisma.service';
 import { RegisterDto } from './dto/register.dto';
-import { UserPlan, User } from '@prisma/client';
+import { LoginDto } from './dto/login.dto';
+import { UserPlan } from '@prisma/client';
 import { AuthService } from '@/infrastructure/auth/auth.service';
 import { normalizeEmail } from '@/common/utils/email.util';
 import { buildDisplayName, DisplayNameInput } from '@/common/utils/display-name.util';
+import { hashPassword, verifyPassword } from '@/common/utils/password.util';
 
 export interface UserPublicProfile {
   id: string;
@@ -52,6 +60,7 @@ export class UserService {
     }
 
     const email = normalizeEmail(dto.email);
+    const passwordHash = await hashPassword(dto.password);
 
     const existing = await this.prisma.user.findUnique({
       where: { email },
@@ -72,18 +81,19 @@ export class UserService {
             acceptedTermsAt: new Date(),
             plan: UserPlan.FREE,
             planSince: existing.plan === UserPlan.FREE ? null : undefined,
+            passwordHash,
           },
           select: { id: true, email: true, plan: true, isGuest: true, firstName: true, lastName: true },
         })
       : await this.prisma.user.create({
           data: {
-            // eslint-disable-next-line prettier/prettier
-          email,
+            email,
             firstName: dto.firstName.trim(),
             lastName: dto.lastName?.trim() ?? null,
             isGuest: false,
             acceptedTermsAt: new Date(),
             plan: UserPlan.FREE,
+            passwordHash,
           },
           select: { id: true, email: true, plan: true, isGuest: true, firstName: true, lastName: true },
         });
@@ -93,7 +103,61 @@ export class UserService {
     return {
       accessToken,
       user,
-      mergedFromGuest: !!existing, // utile pour debug/observabilité
+      mergedFromGuest: !!existing,
+    };
+  }
+
+  async login(dto: LoginDto): Promise<{
+    accessToken: string;
+    user: {
+      id: string;
+      email: string | null;
+      plan: UserPlan;
+      isGuest: boolean;
+      firstName: string;
+      lastName: string | null;
+    };
+  }> {
+    const email = normalizeEmail(dto.email);
+
+    const user = await this.prisma.user.findUnique({
+      where: { email },
+      select: {
+        id: true,
+        email: true,
+        plan: true,
+        isGuest: true,
+        firstName: true,
+        lastName: true,
+        passwordHash: true,
+      },
+    });
+
+    if (!user || user.isGuest || !user.passwordHash) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
+    const passwordOk = await verifyPassword(dto.password, user.passwordHash);
+    if (!passwordOk) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
+    const accessToken = this.auth.signForUser({
+      id: user.id,
+      email: user.email,
+      plan: user.plan,
+    });
+
+    return {
+      accessToken,
+      user: {
+        id: user.id,
+        email: user.email,
+        plan: user.plan,
+        isGuest: user.isGuest,
+        firstName: user.firstName,
+        lastName: user.lastName,
+      },
     };
   }
 

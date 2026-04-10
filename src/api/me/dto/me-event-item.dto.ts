@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { EventStatus } from '@prisma/client';
+import { EventStatus, EventType } from '@prisma/client';
 
 export class MeEventItemDto {
   @ApiProperty()
@@ -13,6 +13,9 @@ export class MeEventItemDto {
 
   @ApiProperty({ enum: EventStatus })
   status: EventStatus;
+
+  @ApiProperty({ enum: EventType })
+  eventType: EventType;
 
   @ApiProperty({ required: false, nullable: true })
   locationName: string | null;

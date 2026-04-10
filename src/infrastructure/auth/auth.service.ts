@@ -1,15 +1,26 @@
 import { Injectable } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { UserPlan } from '@prisma/client';
+
+export interface SignableUser {
+  id: string;
+  email: string | null;
+  plan: UserPlan;
+}
 
 @Injectable()
 export class AuthService {
   constructor(private readonly jwt: JwtService) {}
 
-  signForUser(user: any) {
-    return this.jwt.sign({ user });
+  signForUser(user: SignableUser): string {
+    return this.jwt.sign({
+      sub: user.id,
+      email: user.email ?? undefined,
+      plan: user.plan,
+    });
   }
 
-  decoded(token) {
+  verifyToken(token: string): unknown {
     return this.jwt.verify(token);
   }
 }

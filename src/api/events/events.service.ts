@@ -223,6 +223,7 @@ export class EventsService {
       locationLng: dto.locationLng,
       eventCode,
       title: dto.title,
+      ...(dto.eventType !== undefined ? { eventType: dto.eventType } : {}),
     };
     const event = await this.prisma.event.create({ data });
 
@@ -260,6 +261,7 @@ export class EventsService {
       locationLat: event.locationLat,
       locationLng: event.locationLng,
       status: event.status,
+      eventType: event.eventType,
       eventCode: event.eventCode,
       completedAt: event.completedAt,
       goingCountAtCompletion: event.goingCountAtCompletion,
@@ -423,6 +425,7 @@ export class EventsService {
         organiserId: true,
         startDateTime: true,
         status: true,
+        eventType: true,
         locationName: true,
         locationAddress: true,
         locationLat: true,
@@ -444,6 +447,7 @@ export class EventsService {
         locationLat: dto.locationLat,
         locationLng: dto.locationLng,
         status: dto.status,
+        ...(dto.eventType !== undefined ? { eventType: dto.eventType } : {}),
       },
       select: {
         id: true,
@@ -451,6 +455,7 @@ export class EventsService {
         organiserId: true,
         startDateTime: true,
         status: true,
+        eventType: true,
         locationName: true,
         locationAddress: true,
         locationLat: true,
@@ -584,6 +589,7 @@ export class EventsService {
         title: true,
         startDateTime: true,
         status: true,
+        eventType: true,
         locationName: true,
         locationAddress: true,
         organiser: { select: { firstName: true, lastName: true } },
@@ -603,6 +609,7 @@ export class EventsService {
       title: ev.title,
       startDateTime: ev.startDateTime.toISOString(),
       status: ev.status,
+      eventType: ev.eventType,
       locationName: ev.locationName,
       locationAddress: ev.locationAddress,
       organiser: {
@@ -740,6 +747,7 @@ export class EventsService {
           status: true,
           title: true,
           description: true,
+          eventType: true,
           locationName: true,
           locationAddress: true,
           locationLat: true,
@@ -783,6 +791,8 @@ export class EventsService {
 
           title: dto.title ?? src.title,
           description: dto.description ?? src.description,
+
+          eventType: dto.eventType ?? src.eventType,
 
           locationName: dto.locationName ?? src.locationName,
           locationAddress: dto.locationAddress ?? src.locationAddress,
