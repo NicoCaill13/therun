@@ -14,6 +14,7 @@ export class SpontaneousRunMapper {
       startTime: row.startTime,
       maxParticipants: row.maxParticipants,
       vibe: row.vibe,
+      status: row.status,
       createdAt: row.createdAt,
     };
     return domain;

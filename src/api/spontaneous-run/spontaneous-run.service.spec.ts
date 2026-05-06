@@ -20,6 +20,7 @@ const baseRun = (): SpontaneousRun => ({
   startTime: new Date('2026-05-06T18:00:00.000Z'),
   maxParticipants: 15,
   vibe: 'Chill',
+  status: 'ACTIVE',
   createdAt: new Date('2026-05-06T12:00:00.000Z'),
 });
 

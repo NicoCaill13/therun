@@ -7,5 +7,6 @@ export interface SpontaneousRun {
   startTime: Date;
   maxParticipants: number;
   vibe: string;
+  status: string;
   createdAt: Date;
 }
