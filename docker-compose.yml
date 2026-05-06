@@ -1,0 +1,48 @@
+# Postgres + Nest API. API uses hostname `postgres` (Compose service name) on port 5432 inside the network.
+# Do not pass `DATABASE_URL` from .env into the api service for Docker; compose sets it below.
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: therun-postgres
+    restart: unless-stopped
+    ports:
+      - '${POSTGRES_PORT:-5432}:5432'
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-therun}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-therun}
+      POSTGRES_DB: ${POSTGRES_DB:-therun}
+    volumes:
+      - therun_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB} || exit 1']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    networks:
+      - therun
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: therun-backend
+    restart: unless-stopped
+    ports:
+      - '${PORT:-3000}:3000'
+    environment:
+      NODE_ENV: production
+      PORT: '3000'
+      DATABASE_URL: postgresql://${POSTGRES_USER:-therun}:${POSTGRES_PASSWORD:-therun}@postgres:5432/${POSTGRES_DB:-therun}?schema=public
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - therun
+
+networks:
+  therun:
+    driver: bridge
+
+volumes:
+  therun_pgdata:
