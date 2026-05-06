@@ -4,7 +4,7 @@ import {
   OnModuleDestroy,
   OnModuleInit,
 } from '@nestjs/common';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient } from '@/prisma/client';
 
 const CONNECT_MAX_ATTEMPTS = 30;
 const CONNECT_RETRY_DELAY_MS = 2000;

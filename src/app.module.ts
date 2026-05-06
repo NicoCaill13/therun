@@ -1,9 +1,17 @@
 import { Module } from '@nestjs/common';
-import { AppController } from './app.controller';
-import { PrismaModule } from './prisma/prisma.module';
+import { ConfigModule } from '@nestjs/config';
+import { SpontaneousRunModule } from './api/spontaneous-run/spontaneous-run.module';
+import { PrismaModule } from './infrastructure/db/prisma.module';
 
 @Module({
-  imports: [PrismaModule],
-  controllers: [AppController],
+  imports: [
+    ConfigModule.forRoot({
+      isGlobal: true,
+      envFilePath: ['.env.local', '.env'],
+    }),
+    PrismaModule,
+    SpontaneousRunModule,
+  ],
+  controllers: [],
 })
-export class AppModule {}
+export class AppModule { }

@@ -2,7 +2,8 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import request = require('supertest');
 import { AppModule } from '../src/app.module';
-import { PrismaService } from '../src/prisma/prisma.service';
+import { PrismaService } from '../src/infrastructure/db/prisma.service';
+import { applyMainLikeHttpLayer } from './apply-main-like-http-layer';
 
 describe('AppController (e2e)', () => {
   let app: INestApplication;
@@ -19,6 +20,7 @@ describe('AppController (e2e)', () => {
       .compile();
 
     app = moduleFixture.createNestApplication();
+    applyMainLikeHttpLayer(app);
     await app.init();
   });
 
@@ -26,9 +28,9 @@ describe('AppController (e2e)', () => {
     await app.close();
   });
 
-  it('/ping (GET)', async () => {
-    const res = await request(app.getHttpServer()).get('/ping').expect(200);
+  it('/api/ping (GET)', async () => {
+    const res = await request(app.getHttpServer()).get('/api/ping').expect(200);
 
-    expect(res.body).toEqual({ status: 'ok' });
+    expect(res.body.data).toEqual({ status: 'ok' });
   });
 });

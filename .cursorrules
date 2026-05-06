@@ -63,8 +63,8 @@ This is a NestJS backend API for a dental practice management system, using:
 ### Module Structure
 
 - Use NestJS modular architecture
-- Each feature module should be self-contained in `src/modules/`
-- Import new files in parent module (`*.module.ts`)
+- HTTP surface lives under `src/api/<feature>/` (controller, service, DTOs, module); import the feature module from `app.module.ts`
+- Import new files in the feature `*.module.ts`
 
 ### Dependency Injection
 
@@ -357,19 +357,18 @@ export class PrismaUserRepository implements UserRepository {
 src/
 ├── app.module.ts           # Root module
 ├── main.ts                 # Application entry point
-├── common/                 # Shared utilities, guards, filters
-├── config/                 # Configuration modules
-├── modules/               # Feature modules
-│   └── api/
-│       └── user/
-│           ├── user.module.ts
-│           ├── user.controller.ts
-│           ├── user.service.ts
-│           ├── dto/
-│           ├── entities/
-│           └── repositories/
-├── prisma/                # Prisma service and utilities
+├── infrastructure/         # Configuration modules
+│    └── db/                # Prisma service and utilities
+│    └── http/              # http interceptor
+├── api/                    # HTTP routes (features)
+│    └── spontaneous-run/
+│        ├── spontaneous-run.module.ts
+│        ├── spontaneous-run.controller.ts
+│        ├── spontaneous-run.service.ts
+│        ├── dto/
+│
 └── utils/                 # Helper functions
+prisma/                    # schema and migrations
 ```
 
 # CONTEXTE TECHNIQUE DU PROJET

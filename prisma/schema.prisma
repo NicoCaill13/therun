@@ -23,12 +23,13 @@ model SpontaneousRun {
   id              String   @id @default(cuid())
   creatorId       String
   creator         User     @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  locationName    String
   latitude        Float
   longitude       Float
   startTime       DateTime
+  maxParticipants Int      @default(15)
   vibe            String
-  maxParticipants Int
-  status          String
+  createdAt       DateTime @default(now())
 
   @@index([latitude, longitude])
   @@map("spontaneous_runs")
