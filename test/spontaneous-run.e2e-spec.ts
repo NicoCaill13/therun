@@ -1,8 +1,9 @@
-import { INestApplication, ValidationPipe } from '@nestjs/common';
+import { INestApplication } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import request = require('supertest');
 import { AppModule } from '../src/app.module';
-import { PrismaService } from '../src/prisma/prisma.service';
+import { PrismaService } from '../src/infrastructure/db/prisma.service';
+import { applyMainLikeHttpLayer } from './apply-main-like-http-layer';
 
 const skipWithoutDb = !process.env.DATABASE_URL;
 
@@ -17,13 +18,7 @@ const skipWithoutDb = !process.env.DATABASE_URL;
     }).compile();
 
     app = moduleFixture.createNestApplication();
-    app.useGlobalPipes(
-      new ValidationPipe({
-        whitelist: true,
-        forbidNonWhitelisted: true,
-        transform: true,
-      }),
-    );
+    applyMainLikeHttpLayer(app);
     await app.init();
     prisma = app.get(PrismaService);
   });
@@ -66,38 +61,43 @@ const skipWithoutDb = !process.env.DATABASE_URL;
     };
 
     const postRes = await request(app.getHttpServer())
-      .post('/spontaneous-runs')
+      .post('/api/spontaneous-runs')
       .send(createBody)
       .expect(201);
 
-    const id = postRes.body.id as string;
-    expect(postBodyShape(postRes.body)).toBe(true);
-    expect(postRes.body.maxParticipants).toBe(15);
+    const created = unwrapData<Record<string, unknown>>(postRes.body);
+    const id = created.id as string;
+    expect(postBodyShape(created)).toBe(true);
+    expect(created.maxParticipants).toBe(15);
 
     const listRes = await request(app.getHttpServer())
-      .get('/spontaneous-runs')
+      .get('/api/spontaneous-runs')
       .expect(200);
-    expect(Array.isArray(listRes.body)).toBe(true);
-    expect(listRes.body).toHaveLength(1);
+    const list = unwrapData<unknown[]>(listRes.body);
+    expect(Array.isArray(list)).toBe(true);
+    expect(list).toHaveLength(1);
 
     const getRes = await request(app.getHttpServer())
-      .get(`/spontaneous-runs/${id}`)
+      .get(`/api/spontaneous-runs/${id}`)
       .expect(200);
-    expect(getRes.body.id).toBe(id);
+    expect(unwrapData<{ id: string }>(getRes.body).id).toBe(id);
 
     const patchRes = await request(app.getHttpServer())
-      .patch(`/spontaneous-runs/${id}`)
+      .patch(`/api/spontaneous-runs/${id}`)
       .send({ vibe: 'Intervals', maxParticipants: 20 })
       .expect(200);
-    expect(patchRes.body.vibe).toBe('Intervals');
-    expect(patchRes.body.maxParticipants).toBe(20);
+    const patched = unwrapData<{ vibe: string; maxParticipants: number }>(
+      patchRes.body,
+    );
+    expect(patched.vibe).toBe('Intervals');
+    expect(patched.maxParticipants).toBe(20);
 
     await request(app.getHttpServer())
-      .delete(`/spontaneous-runs/${id}`)
+      .delete(`/api/spontaneous-runs/${id}`)
       .expect(204);
 
     await request(app.getHttpServer())
-      .get(`/spontaneous-runs/${id}`)
+      .get(`/api/spontaneous-runs/${id}`)
       .expect(404);
   });
 
@@ -106,7 +106,7 @@ const skipWithoutDb = !process.env.DATABASE_URL;
       throw new Error('SpontaneousRun e2e: app not initialized');
     }
     await request(app.getHttpServer())
-      .post('/spontaneous-runs')
+      .post('/api/spontaneous-runs')
       .send({
         creatorId: 'unknown-user-id',
         locationName: 'X',
@@ -118,6 +118,13 @@ const skipWithoutDb = !process.env.DATABASE_URL;
       .expect(400);
   });
 });
+
+function unwrapData<T>(body: Record<string, unknown>): T {
+  if (body && typeof body === 'object' && 'data' in body) {
+    return body.data as T;
+  }
+  return body as T;
+}
 
 function postBodyShape(body: Record<string, unknown>): boolean {
   return (

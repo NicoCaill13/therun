@@ -1,11 +1,11 @@
 import { Injectable } from '@nestjs/common';
-import type { SpontaneousRun as PrismaSpontaneousRun } from '@prisma/client';
+import type { SpontaneousRun as SpontaneousRunRow } from '@/prisma/client';
 import type { SpontaneousRun } from '../domain/spontaneous-run';
 
 @Injectable()
 export class SpontaneousRunMapper {
-  toDomain(row: PrismaSpontaneousRun): SpontaneousRun {
-    return {
+  toDomain(row: SpontaneousRunRow): SpontaneousRun {
+    const domain: SpontaneousRun = {
       id: row.id,
       creatorId: row.creatorId,
       locationName: row.locationName,
@@ -16,5 +16,6 @@ export class SpontaneousRunMapper {
       vibe: row.vibe,
       createdAt: row.createdAt,
     };
+    return domain;
   }
 }

@@ -4,10 +4,10 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { Prisma } from '@/prisma/client';
 import type { SpontaneousRun } from './domain/spontaneous-run';
 import type { CreateSpontaneousRunDto } from './dto/create-spontaneous-run.dto';
-import type { SpontaneousRunResponseDto } from './dto/spontaneous-run-response.dto';
+import { SpontaneousRunResponseDto } from './dto/spontaneous-run-response.dto';
 import type { UpdateSpontaneousRunDto } from './dto/update-spontaneous-run.dto';
 import {
   SPONTANEOUS_RUN_REPOSITORY,
@@ -20,7 +20,7 @@ export class SpontaneousRunService {
   constructor(
     @Inject(SPONTANEOUS_RUN_REPOSITORY)
     private readonly repository: SpontaneousRunRepository,
-  ) { }
+  ) {}
 
   async create(dto: CreateSpontaneousRunDto): Promise<SpontaneousRunResponseDto> {
     const maxParticipants = dto.maxParticipants ?? 15;
@@ -121,16 +121,16 @@ export class SpontaneousRunService {
   }
 
   private toResponse(run: SpontaneousRun): SpontaneousRunResponseDto {
-    return {
-      id: run.id,
-      creatorId: run.creatorId,
-      locationName: run.locationName,
-      latitude: run.latitude,
-      longitude: run.longitude,
-      startTime: run.startTime.toISOString(),
-      maxParticipants: run.maxParticipants,
-      vibe: run.vibe,
-      createdAt: run.createdAt.toISOString(),
-    };
+    const dto = new SpontaneousRunResponseDto();
+    dto.id = run.id;
+    dto.creatorId = run.creatorId;
+    dto.locationName = run.locationName;
+    dto.latitude = run.latitude;
+    dto.longitude = run.longitude;
+    dto.startTime = run.startTime.toISOString();
+    dto.maxParticipants = run.maxParticipants;
+    dto.vibe = run.vibe;
+    dto.createdAt = run.createdAt.toISOString();
+    return dto;
   }
 }

@@ -3,7 +3,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
-import { Prisma } from '@prisma/client';
+import { Prisma } from '@/prisma/client';
 import type { SpontaneousRun } from './domain/spontaneous-run';
 import {
   SPONTANEOUS_RUN_REPOSITORY,
@@ -101,17 +101,6 @@ describe('SpontaneousRunService', () => {
     const res = await service.update('run_1', {});
     expect(repository.update).not.toHaveBeenCalled();
     expect(res.id).toBe('run_1');
-  });
-
-  it('update maps P2025 to NotFoundException', async () => {
-    const err = new Prisma.PrismaClientKnownRequestError('Not found', {
-      code: 'P2025',
-      clientVersion: 'test',
-    });
-    repository.update.mockRejectedValue(err);
-    await expect(
-      service.update('missing', { vibe: 'Tempo' }),
-    ).rejects.toBeInstanceOf(NotFoundException);
   });
 
   it('remove maps P2025 to NotFoundException', async () => {

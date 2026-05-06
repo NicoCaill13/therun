@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { PrismaService } from '@/prisma/prisma.service';
+import { PrismaService } from '@/infrastructure/db/prisma.service';
 import type { SpontaneousRun } from '../domain/spontaneous-run';
 import { SpontaneousRunMapper } from '../mappers/spontaneous-run.mapper';
 import type {
@@ -13,7 +13,7 @@ export class PrismaSpontaneousRunRepository implements SpontaneousRunRepository 
   constructor(
     private readonly prisma: PrismaService,
     private readonly mapper: SpontaneousRunMapper,
-  ) { }
+  ) {}
 
   async create(data: CreateSpontaneousRunData): Promise<SpontaneousRun> {
     const row = await this.prisma.spontaneousRun.create({ data });

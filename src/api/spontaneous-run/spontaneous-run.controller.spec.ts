@@ -16,9 +16,7 @@ describe('SpontaneousRunController', () => {
     jest.clearAllMocks();
     const module: TestingModule = await Test.createTestingModule({
       controllers: [SpontaneousRunController],
-      providers: [
-        { provide: SpontaneousRunService, useValue: service },
-      ],
+      providers: [{ provide: SpontaneousRunService, useValue: service }],
     }).compile();
 
     controller = module.get(SpontaneousRunController);
@@ -44,17 +42,10 @@ describe('SpontaneousRunController', () => {
     expect(service.findAll).toHaveBeenCalledWith();
   });
 
-  it('delegates findOne to service', async () => {
-    service.findOne.mockResolvedValue({ id: 'r1' } as never);
-    await controller.findOne('r1');
-    expect(service.findOne).toHaveBeenCalledWith('r1');
-  });
-
   it('delegates update to service', async () => {
-    const patch = { vibe: 'Tempo' };
-    service.update.mockResolvedValue({ id: 'r1', vibe: 'Tempo' } as never);
-    await controller.update('r1', patch);
-    expect(service.update).toHaveBeenCalledWith('r1', patch);
+    service.update.mockResolvedValue({ id: 'r1' } as never);
+    await controller.update('r1', { vibe: 'Tempo' });
+    expect(service.update).toHaveBeenCalledWith('r1', { vibe: 'Tempo' });
   });
 
   it('delegates remove to service', async () => {

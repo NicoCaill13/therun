@@ -13,6 +13,7 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-therun}
     volumes:
       - therun_pgdata:/var/lib/postgresql/data
+      - ./docker/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB} || exit 1']
       interval: 5s
@@ -26,10 +27,17 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      target: dev
     container_name: therun-backend
     restart: unless-stopped
     ports:
       - '${PORT:-3000}:3000'
+    volumes:
+      - ./:/usr/src/app
+      - /usr/src/app/node_modules
+    command: sh -c "npx prisma generate && npm run start:dev"
+    env_file:
+      - .env
     environment:
       NODE_ENV: production
       PORT: '3000'

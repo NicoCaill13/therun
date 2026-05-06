@@ -17,4 +17,4 @@ import { SpontaneousRunService } from './spontaneous-run.service';
   ],
   exports: [SpontaneousRunService],
 })
-export class SpontaneousRunModule { }
+export class SpontaneousRunModule {}
