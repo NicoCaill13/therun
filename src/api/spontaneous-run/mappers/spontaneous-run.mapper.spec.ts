@@ -1,5 +1,7 @@
-import type { SpontaneousRun as SpontaneousRunRow } from '@/prisma/client';
-import { SpontaneousRunMapper } from './spontaneous-run.mapper';
+import {
+  SpontaneousRunMapper,
+  type SpontaneousRunPersistenceRow,
+} from './spontaneous-run.mapper';
 
 describe('SpontaneousRunMapper', () => {
   const mapper = new SpontaneousRunMapper();
@@ -16,7 +18,7 @@ describe('SpontaneousRunMapper', () => {
       vibe: 'Chill',
       status: 'ACTIVE',
       createdAt: new Date('2026-05-06T12:00:00.000Z'),
-    } satisfies SpontaneousRunRow;
+    } satisfies SpontaneousRunPersistenceRow;
 
     expect(mapper.toDomain(row)).toEqual({
       id: 'run_1',
@@ -30,5 +32,21 @@ describe('SpontaneousRunMapper', () => {
       status: 'ACTIVE',
       createdAt: row.createdAt,
     });
+  });
+
+  it('defaults status to ACTIVE when omitted', () => {
+    const row = {
+      id: 'run_2',
+      creatorId: 'user_1',
+      locationName: 'Park',
+      latitude: 46,
+      longitude: -74,
+      startTime: new Date('2026-05-06T18:00:00.000Z'),
+      maxParticipants: 10,
+      vibe: 'Tempo',
+      createdAt: new Date('2026-05-06T12:00:00.000Z'),
+    } satisfies SpontaneousRunPersistenceRow;
+
+    expect(mapper.toDomain(row).status).toBe('ACTIVE');
   });
 });

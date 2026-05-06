@@ -9,6 +9,7 @@ import {
   SPONTANEOUS_RUN_REPOSITORY,
   type SpontaneousRunRepository,
 } from './repositories/spontaneous-run.repository';
+import { RunRadarNotifier } from './run-radar-notifier';
 import { SpontaneousRunService } from './spontaneous-run.service';
 
 const baseRun = (): SpontaneousRun => ({
@@ -27,6 +28,7 @@ const baseRun = (): SpontaneousRun => ({
 describe('SpontaneousRunService', () => {
   let service: SpontaneousRunService;
   let repository: jest.Mocked<SpontaneousRunRepository>;
+  let runRadarNotifier: { notifyNearbyAfterRunCreated: jest.Mock };
 
   beforeEach(async () => {
     const mockRepo: jest.Mocked<SpontaneousRunRepository> = {
@@ -36,11 +38,15 @@ describe('SpontaneousRunService', () => {
       update: jest.fn(),
       delete: jest.fn(),
     };
+    runRadarNotifier = {
+      notifyNearbyAfterRunCreated: jest.fn().mockResolvedValue(undefined),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         SpontaneousRunService,
         { provide: SPONTANEOUS_RUN_REPOSITORY, useValue: mockRepo },
+        { provide: RunRadarNotifier, useValue: runRadarNotifier },
       ],
     }).compile();
 
@@ -70,9 +76,17 @@ describe('SpontaneousRunService', () => {
     });
     expect(res.id).toBe('run_1');
     expect(res.startTime).toBe('2026-05-06T18:00:00.000Z');
+    expect(runRadarNotifier.notifyNearbyAfterRunCreated).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: 'run_1',
+        creatorId: 'user_1',
+        latitude: 45.5,
+        longitude: -73.6,
+      }),
+    );
   });
 
-  it('create maps P2003 to BadRequestException', async () => {
+  it('create does not notify when persistence fails', async () => {
     const err = new Prisma.PrismaClientKnownRequestError('FK', {
       code: 'P2003',
       clientVersion: 'test',
@@ -88,6 +102,7 @@ describe('SpontaneousRunService', () => {
         vibe: 'Chill',
       }),
     ).rejects.toBeInstanceOf(BadRequestException);
+    expect(runRadarNotifier.notifyNearbyAfterRunCreated).not.toHaveBeenCalled();
   });
 
   it('findOne throws when missing', async () => {
