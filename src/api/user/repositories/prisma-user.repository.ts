@@ -6,6 +6,14 @@ import type {
   UserRepository,
 } from './user.repository';
 
+/** Row shape for radar user query (explicit; Prisma client may lag schema in Docker). */
+type NearbyUserSelectRow = {
+  id: string;
+  lastKnownLatitude: number | null;
+  lastKnownLongitude: number | null;
+  expoPushToken: string | null;
+};
+
 @Injectable()
 export class PrismaUserRepository implements UserRepository {
   constructor(private readonly prisma: PrismaService) {}
@@ -16,6 +24,7 @@ export class PrismaUserRepository implements UserRepository {
     longitude: number,
     expoPushToken?: string | null,
   ): Promise<void> {
+    // Cast: tolerate Prisma client generated before radar columns existed (stale node_modules volume).
     await this.prisma.user.update({
       where: { id: userId },
       data: {
@@ -24,7 +33,7 @@ export class PrismaUserRepository implements UserRepository {
         ...(expoPushToken !== undefined
           ? { expoPushToken: expoPushToken ?? null }
           : {}),
-      },
+      } as never,
     });
   }
 
@@ -39,7 +48,7 @@ export class PrismaUserRepository implements UserRepository {
     const safeCos = Math.max(Math.abs(cosLat), 0.2);
     const lngDelta = radiusKm / (111 * safeCos);
 
-    const rows = await this.prisma.user.findMany({
+    const rows = (await this.prisma.user.findMany({
       where: {
         id: { not: excludeUserId },
         lastKnownLatitude: { not: null },
@@ -66,7 +75,7 @@ export class PrismaUserRepository implements UserRepository {
         lastKnownLongitude: true,
         expoPushToken: true,
       },
-    });
+    } as never)) as unknown as NearbyUserSelectRow[];
 
     const out: NearbyRunNotificationUser[] = [];
     for (const row of rows) {

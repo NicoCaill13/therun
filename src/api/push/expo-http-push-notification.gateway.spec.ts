@@ -29,6 +29,19 @@ describe('ExpoHttpPushNotificationGateway', () => {
     );
   });
 
+  it('swallows transport errors from fetch', async () => {
+    global.fetch = jest.fn().mockRejectedValue(new Error('ENOTFOUND'));
+
+    const gw = new ExpoHttpPushNotificationGateway();
+    await expect(
+      gw.sendRunNearby(['ExponentPushToken[a]'], {
+        runId: 'r1',
+        title: 't',
+        body: 'b',
+      }),
+    ).resolves.toBeUndefined();
+  });
+
   it('deduplicates tokens', async () => {
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,

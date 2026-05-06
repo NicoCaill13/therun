@@ -35,7 +35,7 @@ services:
     volumes:
       - ./:/usr/src/app
       - /usr/src/app/node_modules
-    command: sh -c "npx prisma generate && npm run start:dev"
+    command: npm run start:dev
     env_file:
       - .env
     environment:

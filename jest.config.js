@@ -9,6 +9,7 @@ module.exports = {
   collectCoverageFrom: ['**/*.(t|j)s'],
   coverageDirectory: '../coverage',
   testEnvironment: 'node',
+  setupFilesAfterEnv: ['<rootDir>/../test/jest-unit-logger-silence.ts'],
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/$1',
   },

@@ -27,14 +27,21 @@ export class ExpoHttpPushNotificationGateway implements PushNotificationGateway 
       sound: 'default' as const,
     }));
 
-    const res = await fetch(EXPO_PUSH_URL, {
-      method: 'POST',
-      headers: {
-        Accept: 'application/json',
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(messages),
-    });
+    let res: Response;
+    try {
+      res = await fetch(EXPO_PUSH_URL, {
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(messages),
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.warn(`Expo push request failed: ${msg}`);
+      return;
+    }
 
     if (!res.ok) {
       const text = await res.text().catch(() => '');

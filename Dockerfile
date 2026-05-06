@@ -15,7 +15,7 @@
   COPY nest-cli.json tsconfig.json tsconfig.build.json ./
   # le code sera monté par le bind mount via docker-compose
   EXPOSE 3000
-  CMD ["npm","run","start:dev"]
+  CMD ["sh","-c","npx prisma generate && npm run start:dev"]
   
   # -------- prod --------
   FROM base AS build

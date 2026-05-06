@@ -38,9 +38,6 @@ export class RunRadarNotifier {
         radiusKm,
       );
       if (targets.length === 0) {
-        this.logger.debug(
-          `RunRadarNotifier: no eligible recipients for run ${run.id} (radius ${radiusKm} km)`,
-        );
         return;
       }
       const tokens = targets.map((t) => t.expoPushToken);
@@ -50,8 +47,8 @@ export class RunRadarNotifier {
         body: `${run.locationName} — open the app to join.`,
       });
     } catch (err: unknown) {
-      this.logger.error(
-        `RunRadarNotifier failed for run ${run.id}: ${err instanceof Error ? err.message : String(err)}`,
+      this.logger.warn(
+        `RunRadarNotifier: notification skipped for run ${run.id}: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
   }
