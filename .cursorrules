@@ -47,7 +47,7 @@ When generating UI components (React Native or Next.js), strictly adhere to thes
 - **Security & Privacy:** Assume all GPS data stored for the B2B heatmap (`PhantomTrace`) must be strictly anonymized with no relational links to the `User` table.
 - **Conciseness:** Provide production-ready, modular code. Do not over-engineer. Follow the "Zero-Friction" philosophy of the app.
 
-- **GitHub Context (MCP):** When starting work on a specific branch, you MUST use the GitHub MCP tool to fetch and read the corresponding GitHub issue. Extract the issue ID from the branch name, read the full description and acceptance criteria, and ensure your implementation strictly satisfies the Definition of Done (DoD) before writing any code.
+- **GitHub Context (MCP):** When starting work on a specific branch, you MUST use the GitHub MCP tool to fetch and read the corresponding GitHub issue from therun project. Extract the issue ID from the branch name, read the full description and acceptance criteria, and ensure your implementation strictly satisfies the Definition of Done (DoD) before writing any code.
 
 5. Rules
 
