@@ -25,6 +25,9 @@ export class SpontaneousRunResponseDto {
   @ApiProperty()
   vibe!: string;
 
+  @ApiProperty({ example: 'ACTIVE' })
+  status!: string;
+
   @ApiProperty({ description: 'ISO 8601' })
   createdAt!: string;
 }

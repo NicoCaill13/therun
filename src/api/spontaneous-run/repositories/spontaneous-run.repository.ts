@@ -13,7 +13,7 @@ export type CreateSpontaneousRunData = {
 };
 
 export type UpdateSpontaneousRunData = Partial<
-  Omit<CreateSpontaneousRunData, 'creatorId'>
+  Omit<CreateSpontaneousRunData, 'creatorId'> & { status: string }
 >;
 
 export interface SpontaneousRunRepository {

@@ -48,4 +48,11 @@ export class UpdateSpontaneousRunDto {
   @MinLength(1)
   @MaxLength(80)
   vibe?: string;
+
+  @ApiPropertyOptional({ example: 'CANCELLED', maxLength: 32 })
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  @MaxLength(32)
+  status?: string;
 }

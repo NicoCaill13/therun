@@ -117,6 +117,9 @@ export class SpontaneousRunService {
     if (dto.vibe !== undefined) {
       data.vibe = dto.vibe;
     }
+    if (dto.status !== undefined) {
+      data.status = dto.status;
+    }
     return data;
   }
 
@@ -130,6 +133,7 @@ export class SpontaneousRunService {
     dto.startTime = run.startTime.toISOString();
     dto.maxParticipants = run.maxParticipants;
     dto.vibe = run.vibe;
+    dto.status = run.status;
     dto.createdAt = run.createdAt.toISOString();
     return dto;
   }

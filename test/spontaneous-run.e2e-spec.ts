@@ -26,6 +26,7 @@ const skipWithoutDb = !process.env.DATABASE_URL;
   afterAll(async () => {
     try {
       if (prisma) {
+        await prisma.runParticipant.deleteMany();
         await prisma.spontaneousRun.deleteMany();
         await prisma.user.deleteMany();
         await prisma.$disconnect();
@@ -41,6 +42,7 @@ const skipWithoutDb = !process.env.DATABASE_URL;
     if (!prisma || !app) {
       throw new Error('SpontaneousRun e2e: app or prisma not initialized');
     }
+    await prisma.runParticipant.deleteMany();
     await prisma.spontaneousRun.deleteMany();
     await prisma.user.deleteMany();
     const user = await prisma.user.create({ data: {} });
@@ -69,6 +71,7 @@ const skipWithoutDb = !process.env.DATABASE_URL;
     const id = created.id as string;
     expect(postBodyShape(created)).toBe(true);
     expect(created.maxParticipants).toBe(15);
+    expect(created.status).toBe('ACTIVE');
 
     const listRes = await request(app.getHttpServer())
       .get('/api/spontaneous-runs')
@@ -117,6 +120,30 @@ const skipWithoutDb = !process.env.DATABASE_URL;
       })
       .expect(400);
   });
+
+  it('RunParticipant composite id prevents duplicate join', async () => {
+    if (!prisma) {
+      throw new Error('SpontaneousRun e2e: prisma not initialized');
+    }
+    const run = await prisma.spontaneousRun.create({
+      data: {
+        creatorId: userId,
+        locationName: 'Park',
+        latitude: 45,
+        longitude: -73,
+        startTime: new Date('2026-05-08T18:30:00.000Z'),
+        vibe: 'Chill',
+      },
+    });
+    await prisma.runParticipant.create({
+      data: { userId, runId: run.id },
+    });
+    await expect(
+      prisma.runParticipant.create({
+        data: { userId, runId: run.id },
+      }),
+    ).rejects.toBeDefined();
+  });
 });
 
 function unwrapData<T>(body: Record<string, unknown>): T {
@@ -136,6 +163,7 @@ function postBodyShape(body: Record<string, unknown>): boolean {
     typeof body.startTime === 'string' &&
     typeof body.maxParticipants === 'number' &&
     typeof body.vibe === 'string' &&
+    typeof body.status === 'string' &&
     typeof body.createdAt === 'string'
   );
 }

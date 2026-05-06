@@ -47,6 +47,8 @@ When generating UI components (React Native or Next.js), strictly adhere to thes
 - **Security & Privacy:** Assume all GPS data stored for the B2B heatmap (`PhantomTrace`) must be strictly anonymized with no relational links to the `User` table.
 - **Conciseness:** Provide production-ready, modular code. Do not over-engineer. Follow the "Zero-Friction" philosophy of the app.
 
+- **Prisma migrations & validation:** When the task touches the database schema or assumes an up-to-date DB, you MUST apply pending migrations yourself (`npx prisma migrate deploy`, or `npx prisma migrate dev` when you author a new migration), then run `npm test` and `npm run test:e2e` yourself (e2e requires `DATABASE_URL`). Fix any failures before treating the task as done. Only defer to the user if the environment truly prevents DB access or test execution.
+
 - **GitHub Context (MCP):** When starting work on a specific branch, you MUST use the GitHub MCP tool to fetch and read the corresponding GitHub issue from therun project. Extract the issue ID from the branch name, read the full description and acceptance criteria, and ensure your implementation strictly satisfies the Definition of Done (DoD) before writing any code.
 
 5. Rules

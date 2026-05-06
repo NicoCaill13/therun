@@ -1,4 +1,5 @@
 // Core entities (GitHub issue #117). PhantomTrace must not reference User (anonymized B2B heatmap points).
+// Run participants & run status: GitHub issue #122.
 generator client {
   provider = "prisma-client-js"
 }
@@ -13,8 +14,11 @@ model User {
   garminToken String?
   stravaToken String?
 
-  spontaneousRuns   SpontaneousRun[]
+  createdRuns       SpontaneousRun[] @relation("CreatedRuns")
+  participations  RunParticipant[]
   administeredCrews Crew[]           @relation("CrewAdmin")
+
+  createdAt DateTime @default(now())
 
   @@map("users")
 }
@@ -22,17 +26,31 @@ model User {
 model SpontaneousRun {
   id              String   @id @default(cuid())
   creatorId       String
-  creator         User     @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  creator         User     @relation("CreatedRuns", fields: [creatorId], references: [id], onDelete: Cascade)
   locationName    String
   latitude        Float
   longitude       Float
   startTime       DateTime
   maxParticipants Int      @default(15)
   vibe            String
+  status          String   @default("ACTIVE")
   createdAt       DateTime @default(now())
+
+  participants RunParticipant[]
 
   @@index([latitude, longitude])
   @@map("spontaneous_runs")
+}
+
+model RunParticipant {
+  userId   String
+  runId    String
+  user     User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  run      SpontaneousRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  joinedAt DateTime       @default(now())
+
+  @@id([userId, runId])
+  @@map("run_participants")
 }
 
 /// Anonymized GPS samples for heatmaps. No relation to User by design.
