@@ -14,6 +14,11 @@ model User {
   garminToken String?
   stravaToken String?
 
+  /// Last device-reported position for radar / nearby run notifications (issue #113).
+  lastKnownLatitude  Float?
+  lastKnownLongitude Float?
+  expoPushToken      String?
+
   createdRuns       SpontaneousRun[] @relation("CreatedRuns")
   participations  RunParticipant[]
   administeredCrews Crew[]           @relation("CrewAdmin")

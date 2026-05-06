@@ -14,12 +14,14 @@ import {
   type SpontaneousRunRepository,
   type UpdateSpontaneousRunData,
 } from './repositories/spontaneous-run.repository';
+import { RunRadarNotifier } from './run-radar-notifier';
 
 @Injectable()
 export class SpontaneousRunService {
   constructor(
     @Inject(SPONTANEOUS_RUN_REPOSITORY)
     private readonly repository: SpontaneousRunRepository,
+    private readonly runRadarNotifier: RunRadarNotifier,
   ) {}
 
   async create(dto: CreateSpontaneousRunDto): Promise<SpontaneousRunResponseDto> {
@@ -34,6 +36,7 @@ export class SpontaneousRunService {
         maxParticipants,
         vibe: dto.vibe,
       });
+      void this.runRadarNotifier.notifyNearbyAfterRunCreated(run);
       return this.toResponse(run);
     } catch (e) {
       if (

@@ -2,6 +2,7 @@ import { INestApplication } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import request = require('supertest');
 import { AppModule } from '../src/app.module';
+import { PUSH_NOTIFICATION_GATEWAY } from '../src/api/push/push-notification-gateway';
 import { PrismaService } from '../src/infrastructure/db/prisma.service';
 import { applyMainLikeHttpLayer } from './apply-main-like-http-layer';
 
@@ -11,11 +12,15 @@ const skipWithoutDb = !process.env.DATABASE_URL;
   let app: INestApplication | undefined;
   let prisma: PrismaService | undefined;
   let userId: string;
+  const pushSend = jest.fn().mockResolvedValue(undefined);
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
-    }).compile();
+    })
+      .overrideProvider(PUSH_NOTIFICATION_GATEWAY)
+      .useValue({ sendRunNearby: pushSend })
+      .compile();
 
     app = moduleFixture.createNestApplication();
     applyMainLikeHttpLayer(app);
@@ -45,6 +50,7 @@ const skipWithoutDb = !process.env.DATABASE_URL;
     await prisma.runParticipant.deleteMany();
     await prisma.spontaneousRun.deleteMany();
     await prisma.user.deleteMany();
+    pushSend.mockClear();
     const user = await prisma.user.create({ data: {} });
     userId = user.id;
   });
@@ -144,7 +150,69 @@ const skipWithoutDb = !process.env.DATABASE_URL;
       }),
     ).rejects.toBeDefined();
   });
+
+  it('POST run notifies only users with location inside MVP radius', async () => {
+    if (!app || !prisma) {
+      throw new Error('SpontaneousRun e2e: app or prisma not initialized');
+    }
+    const neighbor = await prisma.user.create({ data: {} });
+    const far = await prisma.user.create({ data: {} });
+    await prisma.user.update({
+      where: { id: neighbor.id },
+      data: {
+        lastKnownLatitude: 45.502,
+        lastKnownLongitude: -73.5673,
+        expoPushToken: 'ExponentPushToken[near]',
+      },
+    });
+    await prisma.user.update({
+      where: { id: far.id },
+      data: {
+        lastKnownLatitude: 45.6,
+        lastKnownLongitude: -73.5673,
+        expoPushToken: 'ExponentPushToken[far]',
+      },
+    });
+
+    await request(app.getHttpServer())
+      .post('/api/spontaneous-runs')
+      .send({
+        creatorId: userId,
+        locationName: 'Place Morgan',
+        latitude: 45.5017,
+        longitude: -73.5673,
+        startTime: '2026-05-08T18:30:00.000Z',
+        vibe: 'Chill',
+      })
+      .expect(201);
+
+    await waitUntil(() => pushSend.mock.calls.length > 0, 5000, 25);
+
+    expect(pushSend).toHaveBeenCalledTimes(1);
+    const [tokens, payload] = pushSend.mock.calls[0] as [
+      string[],
+      { runId: string; title: string; body: string },
+    ];
+    expect(tokens).toEqual(['ExponentPushToken[near]']);
+    expect(payload.title).toBe('Run nearby');
+    expect(payload.runId).toEqual(expect.any(String));
+  });
 });
+
+async function waitUntil(
+  predicate: () => boolean,
+  timeoutMs: number,
+  stepMs: number,
+): Promise<void> {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    if (predicate()) {
+      return;
+    }
+    await new Promise<void>((resolve) => setTimeout(resolve, stepMs));
+  }
+  throw new Error('waitUntil: condition not met within timeout');
+}
 
 function unwrapData<T>(body: Record<string, unknown>): T {
   if (body && typeof body === 'object' && 'data' in body) {

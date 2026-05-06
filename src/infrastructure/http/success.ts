@@ -1,6 +1,7 @@
 import { CallHandler, ExecutionContext, Injectable, NestInterceptor, StreamableFile } from '@nestjs/common';
 import { map } from 'rxjs/operators';
 import { Reflector } from '@nestjs/core';
+import type { Request, Response } from 'express';
 
 @Injectable()
 export class SuccessResponseInterceptor implements NestInterceptor {
@@ -11,10 +12,10 @@ export class SuccessResponseInterceptor implements NestInterceptor {
         if (skip) return next.handle();
 
         const http = ctx.switchToHttp();
-        const res = http.getResponse<any>();
+        const res = http.getResponse<Response>();
 
         return next.handle().pipe(
-            map((data: any) => {
+            map((data: unknown) => {
                 // si headers déjà envoyés (ex: redirect), ne rien faire
                 if (res.headersSent) return data;
 
@@ -29,15 +30,18 @@ export class SuccessResponseInterceptor implements NestInterceptor {
                 }
 
                 // si handler @Redirect a renvoyé un objet { url, statusCode: 302 }, ne pas wrapper
-                if (data && typeof data === 'object' && 'url' in data && data.statusCode >= 300 && data.statusCode < 400) {
-                    return data;
+                if (data && typeof data === 'object' && 'url' in data && 'statusCode' in data) {
+                    const d = data as { url: unknown; statusCode: number };
+                    if (d.statusCode >= 300 && d.statusCode < 400) {
+                        return data;
+                    }
                 }
 
                 if (data && typeof data === 'object' && 'statusCode' in data && 'timestamp' in data) {
                     return data;
                 }
 
-                const req = http.getRequest<any>();
+                const req = http.getRequest<Request>();
                 const path = req?.originalUrl ?? req?.url ?? '';
 
                 return {
