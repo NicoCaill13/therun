@@ -19,6 +19,10 @@ model User {
   lastKnownLongitude Float?
   expoPushToken      String?
 
+  /// Le Pacte onboarding completion & optional anonymized data opt-in (issue #112).
+  hasCompletedOnboarding Boolean @default(false)
+  consentDataBrokering   Boolean @default(false)
+
   createdRuns       SpontaneousRun[] @relation("CreatedRuns")
   participations  RunParticipant[]
   administeredCrews Crew[]           @relation("CrewAdmin")

@@ -3,6 +3,7 @@ import { PrismaService } from '@/infrastructure/db/prisma.service';
 import { haversineDistanceKm } from '@/api/location/haversine';
 import type {
   NearbyRunNotificationUser,
+  UserOnboardingState,
   UserRepository,
 } from './user.repository';
 
@@ -14,9 +15,46 @@ type NearbyUserSelectRow = {
   expoPushToken: string | null;
 };
 
+/** Onboarding row (explicit; Prisma client in Docker may lag behind schema). */
+type OnboardingSelectRow = {
+  hasCompletedOnboarding: boolean;
+  consentDataBrokering: boolean;
+};
+
 @Injectable()
 export class PrismaUserRepository implements UserRepository {
   constructor(private readonly prisma: PrismaService) {}
+
+  async findOnboardingById(
+    userId: string,
+  ): Promise<UserOnboardingState | null> {
+    const row = (await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        hasCompletedOnboarding: true,
+        consentDataBrokering: true,
+      },
+    } as never)) as OnboardingSelectRow | null;
+    if (!row) {
+      return null;
+    }
+    return {
+      hasCompletedOnboarding: row.hasCompletedOnboarding,
+      consentDataBrokering: row.consentDataBrokering,
+    };
+  }
+
+  async patchOnboarding(
+    userId: string,
+    patch: Partial<
+      Pick<UserOnboardingState, 'hasCompletedOnboarding' | 'consentDataBrokering'>
+    >,
+  ): Promise<void> {
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: patch as never,
+    });
+  }
 
   async updateLastKnownLocation(
     userId: string,
